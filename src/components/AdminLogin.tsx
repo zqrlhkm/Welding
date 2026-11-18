@@ -14,7 +14,7 @@ export function AdminLogin({ onLoginSuccess, onBackToSite }: AdminLoginProps) {
 
   const handleLogin = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (username.trim() === 'admin' && password === 'welding123') {
+    if (username.trim() === 'ziqrul' && password === 'ziqrul123') {
       setLoginError('');
       onLoginSuccess();
     } else {
@@ -78,7 +78,7 @@ export function AdminLogin({ onLoginSuccess, onBackToSite }: AdminLoginProps) {
                   setUsername(e.target.value);
                   if (loginError) setLoginError('');
                 }}
-                placeholder="cth: admin"
+                placeholder="Masukkan nama pengguna"
                 autoComplete="username"
                 required
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50/70 text-sm text-slate-950 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15"
