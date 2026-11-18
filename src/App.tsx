@@ -32,18 +32,29 @@ export default function App() {
     }
   });
 
-  const { leads, addLead, updateLeadStatus, deleteLead, exportLeadsToCSV } =
-    useLeadCRM();
+  const {
+    leads,
+    addLead,
+    updateLeadStatus,
+    deleteLead,
+    refreshLeads,
+    exportLeadsToCSV,
+  } = useLeadCRM();
 
   useEffect(() => {
     const handleHashChange = () => {
-      setIsAdminView(window.location.hash === '#admin');
+      const adminHash = window.location.hash === '#admin';
+      if (adminHash) {
+        refreshLeads();
+      }
+      setIsAdminView(adminHash);
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [refreshLeads]);
 
   const openAdmin = () => {
+    refreshLeads();
     setIsAdminView(true);
     window.history.replaceState(null, '', '#admin');
     window.scrollTo({ top: 0, behavior: 'auto' });

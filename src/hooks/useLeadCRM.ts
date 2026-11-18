@@ -3,12 +3,14 @@ import {
   EXPERIENCE_LEVELS,
   ExperienceLevel,
   LEAD_STATUSES,
+  Lead,
   LeadRecord,
   LeadStatus,
   NewLeadInput,
 } from '../types/crm';
 
-export const CRM_STORAGE_KEY = 'gis_welding_crm_leads_v1';
+export const CRM_STORAGE_KEY = 'welding_leads_data';
+const LEGACY_STORAGE_KEY = 'gis_welding_crm_leads_v1';
 const CRM_SYNC_EVENT = 'gis_welding_crm_sync';
 
 // In-memory fallback for mobile private browsing / strict WebViews where localStorage is blocked
@@ -40,16 +42,12 @@ function isStorageAvailable(): boolean {
   }
 }
 
-function readStoredLeads(): LeadRecord[] {
-  if (typeof window === 'undefined' || !isStorageAvailable()) {
-    return inMemoryLeadsFallback;
-  }
+function parseRawLeads(raw: string | null): LeadRecord[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(CRM_STORAGE_KEY);
-    if (!raw) return inMemoryLeadsFallback;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return inMemoryLeadsFallback;
-    const normalized = parsed
+    if (!Array.isArray(parsed)) return [];
+    return parsed
       .filter(
         (item): item is Record<string, unknown> =>
           typeof item === 'object' &&
@@ -68,11 +66,40 @@ function readStoredLeads(): LeadRecord[] {
         phone: item.phone as string,
         email: item.email as string,
         program: item.program as string,
-        experienceLevel: normalizeExperience(item.experienceLevel),
+        experienceLevel: normalizeExperience(
+          item.experienceLevel ?? item.experience
+        ),
         status: isValidStatus(item.status) ? item.status : 'New Lead',
       }));
-    inMemoryLeadsFallback = normalized;
-    return normalized;
+  } catch {
+    return [];
+  }
+}
+
+function readStoredLeads(): LeadRecord[] {
+  if (typeof window === 'undefined' || !isStorageAvailable()) {
+    return inMemoryLeadsFallback;
+  }
+  try {
+    const primaryRaw = window.localStorage.getItem(CRM_STORAGE_KEY);
+    if (primaryRaw) {
+      const normalized = parseRawLeads(primaryRaw);
+      inMemoryLeadsFallback = normalized;
+      return normalized;
+    }
+
+    // One-time seamless migration if leads were saved under the previous key
+    const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacyRaw) {
+      const migrated = parseRawLeads(legacyRaw);
+      if (migrated.length > 0) {
+        window.localStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(migrated));
+        inMemoryLeadsFallback = migrated;
+        return migrated;
+      }
+    }
+
+    return inMemoryLeadsFallback;
   } catch {
     return inMemoryLeadsFallback;
   }
@@ -121,46 +148,45 @@ export function formatTimestamp(isoString: string): string {
 }
 
 export function useLeadCRM() {
-  const [leads, setLeads] = useState<LeadRecord[]>(() => readStoredLeads());
+  const [leads, setLeads] = useState<Lead[]>(() => readStoredLeads());
+
+  const refreshLeads = useCallback(() => {
+    const fresh = readStoredLeads();
+    setLeads((prev) =>
+      JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh
+    );
+  }, []);
 
   useEffect(() => {
-    const syncFromStorage = () => {
-      const fresh = readStoredLeads();
-      setLeads((prev) =>
-        JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh
-      );
-    };
+    refreshLeads();
+
     const handleStorageSync = (event: StorageEvent) => {
-      if (event.key === CRM_STORAGE_KEY) {
-        syncFromStorage();
+      if (event.key === CRM_STORAGE_KEY || event.key === null) {
+        refreshLeads();
       }
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        syncFromStorage();
+        refreshLeads();
       }
     };
 
     window.addEventListener('storage', handleStorageSync);
-    window.addEventListener(CRM_SYNC_EVENT, syncFromStorage);
-    // Mobile Safari / Android Chrome bfcache & app-switch recovery (e.g. returning from WhatsApp)
-    window.addEventListener('pageshow', syncFromStorage);
+    window.addEventListener(CRM_SYNC_EVENT, refreshLeads);
+    window.addEventListener('pageshow', refreshLeads);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('storage', handleStorageSync);
-      window.removeEventListener(CRM_SYNC_EVENT, syncFromStorage);
-      window.removeEventListener('pageshow', syncFromStorage);
+      window.removeEventListener(CRM_SYNC_EVENT, refreshLeads);
+      window.removeEventListener('pageshow', refreshLeads);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [refreshLeads]);
 
   const addLead = useCallback((input: NewLeadInput): LeadRecord => {
     const newRecord: LeadRecord = {
-      id:
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `lead_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `LEAD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
       createdAt: new Date().toISOString(),
       name: input.name.trim(),
       phone: input.phone.trim(),
@@ -170,7 +196,6 @@ export function useLeadCRM() {
       status: isValidStatus(input.status) ? input.status : 'New Lead',
     };
 
-    // Always merge against the latest storage snapshot to prevent stale-state overwrites
     const current = readStoredLeads();
     const next = [newRecord, ...current];
     writeStoredLeads(next);
@@ -241,6 +266,7 @@ export function useLeadCRM() {
     addLead,
     updateLeadStatus,
     deleteLead,
+    refreshLeads,
     exportLeadsToCSV,
   };
 }

@@ -16,6 +16,8 @@ export interface LeadRecord {
   status: LeadStatus;
 }
 
+export type Lead = LeadRecord;
+
 export interface NewLeadInput {
   name: string;
   phone: string;
