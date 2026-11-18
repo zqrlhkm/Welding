@@ -1,12 +1,13 @@
 import { AlertCircle, CheckCircle2, MessageCircle, PhoneCall } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { DISPLAY_PHONE, PROGRAM_TRACKS, WHATSAPP_NUMBER } from '../data/programData';
+import { useLeadCRM } from '../hooks/useLeadCRM';
 import { EXPERIENCE_LEVELS, ExperienceLevel, NewLeadInput } from '../types/crm';
 
 interface LeadFormSectionProps {
   selectedProgram: string;
   onSelectProgram: (programTitle: string) => void;
-  onAddLead: (lead: NewLeadInput) => void;
+  onAddLead?: (lead: NewLeadInput) => void;
 }
 
 interface FormErrors {
@@ -22,6 +23,7 @@ export function LeadFormSection({
   onSelectProgram,
   onAddLead,
 }: LeadFormSectionProps) {
+  const { addLead: crmAddLead } = useLeadCRM();
   const [nama, setNama] = useState('');
   const [telefon, setTelefon] = useState('');
   const [emel, setEmel] = useState('');
@@ -78,12 +80,14 @@ export function LeadFormSection({
 
     const chosenExperience = pengalaman as ExperienceLevel;
 
-    onAddLead({
+    const submitLead = onAddLead ?? crmAddLead;
+    submitLead({
       name: nama.trim(),
       phone: telefon.trim(),
       email: emel.trim(),
       program: kursus,
       experienceLevel: chosenExperience,
+      status: 'New Lead',
     });
 
     const rawMessage =

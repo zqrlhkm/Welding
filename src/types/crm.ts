@@ -21,7 +21,9 @@ export interface NewLeadInput {
   phone: string;
   email: string;
   program: string;
-  experienceLevel: ExperienceLevel;
+  experienceLevel?: ExperienceLevel;
+  experience?: ExperienceLevel;
+  status?: LeadStatus;
 }
 
 export const LEAD_STATUSES: LeadStatus[] = [

@@ -9,6 +9,7 @@ import {
 } from '../types/crm';
 
 export const CRM_STORAGE_KEY = 'gis_welding_crm_leads_v1';
+const CRM_SYNC_EVENT = 'gis_welding_crm_sync';
 
 function isValidStatus(value: unknown): value is LeadStatus {
   return typeof value === 'string' && LEAD_STATUSES.includes(value as LeadStatus);
@@ -71,6 +72,13 @@ function writeStoredLeads(records: LeadRecord[]): void {
   }
 }
 
+function notifySameTabCRMListeners(): void {
+  if (typeof window === 'undefined') return;
+  queueMicrotask(() => {
+    window.dispatchEvent(new CustomEvent(CRM_SYNC_EVENT));
+  });
+}
+
 function escapeCsvCell(value: string): string {
   const normalized = value.replace(/\r?\n/g, ' ');
   if (/[",]/.test(normalized)) {
@@ -102,13 +110,23 @@ export function useLeadCRM() {
   }, [leads]);
 
   useEffect(() => {
+    const syncIfChanged = () => {
+      const fresh = readStoredLeads();
+      setLeads((prev) =>
+        JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh
+      );
+    };
     const handleStorageSync = (event: StorageEvent) => {
       if (event.key === CRM_STORAGE_KEY) {
-        setLeads(readStoredLeads());
+        syncIfChanged();
       }
     };
     window.addEventListener('storage', handleStorageSync);
-    return () => window.removeEventListener('storage', handleStorageSync);
+    window.addEventListener(CRM_SYNC_EVENT, syncIfChanged);
+    return () => {
+      window.removeEventListener('storage', handleStorageSync);
+      window.removeEventListener(CRM_SYNC_EVENT, syncIfChanged);
+    };
   }, []);
 
   const addLead = useCallback((input: NewLeadInput): LeadRecord => {
@@ -122,8 +140,8 @@ export function useLeadCRM() {
       phone: input.phone.trim(),
       email: input.email.trim(),
       program: input.program,
-      experienceLevel: normalizeExperience(input.experienceLevel),
-      status: 'New Lead',
+      experienceLevel: normalizeExperience(input.experienceLevel ?? input.experience),
+      status: isValidStatus(input.status) ? input.status : 'New Lead',
     };
 
     setLeads((prev) => {
@@ -131,6 +149,7 @@ export function useLeadCRM() {
       writeStoredLeads(next);
       return next;
     });
+    notifySameTabCRMListeners();
     return newRecord;
   }, []);
 
@@ -142,6 +161,7 @@ export function useLeadCRM() {
       writeStoredLeads(next);
       return next;
     });
+    notifySameTabCRMListeners();
   }, []);
 
   const deleteLead = useCallback((id: string) => {
@@ -150,6 +170,7 @@ export function useLeadCRM() {
       writeStoredLeads(next);
       return next;
     });
+    notifySameTabCRMListeners();
   }, []);
 
   const exportLeadsToCSV = useCallback((recordsToExport: LeadRecord[]) => {
