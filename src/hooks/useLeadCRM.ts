@@ -11,6 +11,9 @@ import {
 export const CRM_STORAGE_KEY = 'gis_welding_crm_leads_v1';
 const CRM_SYNC_EVENT = 'gis_welding_crm_sync';
 
+// In-memory fallback for mobile private browsing / strict WebViews where localStorage is blocked
+let inMemoryLeadsFallback: LeadRecord[] = [];
+
 function isValidStatus(value: unknown): value is LeadStatus {
   return typeof value === 'string' && LEAD_STATUSES.includes(value as LeadStatus);
 }
@@ -25,16 +28,28 @@ function normalizeExperience(value: unknown): ExperienceLevel {
   return EXPERIENCE_LEVELS[0];
 }
 
+function isStorageAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const testKey = '__gis_crm_storage_test__';
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function readStoredLeads(): LeadRecord[] {
-  if (typeof window === 'undefined') {
-    return [];
+  if (typeof window === 'undefined' || !isStorageAvailable()) {
+    return inMemoryLeadsFallback;
   }
   try {
     const raw = window.localStorage.getItem(CRM_STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return inMemoryLeadsFallback;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
+    if (!Array.isArray(parsed)) return inMemoryLeadsFallback;
+    const normalized = parsed
       .filter(
         (item): item is Record<string, unknown> =>
           typeof item === 'object' &&
@@ -56,19 +71,22 @@ function readStoredLeads(): LeadRecord[] {
         experienceLevel: normalizeExperience(item.experienceLevel),
         status: isValidStatus(item.status) ? item.status : 'New Lead',
       }));
+    inMemoryLeadsFallback = normalized;
+    return normalized;
   } catch {
-    return [];
+    return inMemoryLeadsFallback;
   }
 }
 
 function writeStoredLeads(records: LeadRecord[]): void {
-  if (typeof window === 'undefined') {
+  inMemoryLeadsFallback = records;
+  if (typeof window === 'undefined' || !isStorageAvailable()) {
     return;
   }
   try {
     window.localStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(records));
   } catch {
-    // Ignore storage quota errors silently
+    // Keep inMemoryLeadsFallback populated even if mobile quota/private mode throws
   }
 }
 
@@ -106,11 +124,7 @@ export function useLeadCRM() {
   const [leads, setLeads] = useState<LeadRecord[]>(() => readStoredLeads());
 
   useEffect(() => {
-    writeStoredLeads(leads);
-  }, [leads]);
-
-  useEffect(() => {
-    const syncIfChanged = () => {
+    const syncFromStorage = () => {
       const fresh = readStoredLeads();
       setLeads((prev) =>
         JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh
@@ -118,14 +132,26 @@ export function useLeadCRM() {
     };
     const handleStorageSync = (event: StorageEvent) => {
       if (event.key === CRM_STORAGE_KEY) {
-        syncIfChanged();
+        syncFromStorage();
       }
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncFromStorage();
+      }
+    };
+
     window.addEventListener('storage', handleStorageSync);
-    window.addEventListener(CRM_SYNC_EVENT, syncIfChanged);
+    window.addEventListener(CRM_SYNC_EVENT, syncFromStorage);
+    // Mobile Safari / Android Chrome bfcache & app-switch recovery (e.g. returning from WhatsApp)
+    window.addEventListener('pageshow', syncFromStorage);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       window.removeEventListener('storage', handleStorageSync);
-      window.removeEventListener(CRM_SYNC_EVENT, syncIfChanged);
+      window.removeEventListener(CRM_SYNC_EVENT, syncFromStorage);
+      window.removeEventListener('pageshow', syncFromStorage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -144,32 +170,30 @@ export function useLeadCRM() {
       status: isValidStatus(input.status) ? input.status : 'New Lead',
     };
 
-    setLeads((prev) => {
-      const next = [newRecord, ...prev];
-      writeStoredLeads(next);
-      return next;
-    });
+    // Always merge against the latest storage snapshot to prevent stale-state overwrites
+    const current = readStoredLeads();
+    const next = [newRecord, ...current];
+    writeStoredLeads(next);
+    setLeads(next);
     notifySameTabCRMListeners();
     return newRecord;
   }, []);
 
   const updateLeadStatus = useCallback((id: string, status: LeadStatus) => {
-    setLeads((prev) => {
-      const next = prev.map((lead) =>
-        lead.id === id ? { ...lead, status } : lead
-      );
-      writeStoredLeads(next);
-      return next;
-    });
+    const current = readStoredLeads();
+    const next = current.map((lead) =>
+      lead.id === id ? { ...lead, status } : lead
+    );
+    writeStoredLeads(next);
+    setLeads(next);
     notifySameTabCRMListeners();
   }, []);
 
   const deleteLead = useCallback((id: string) => {
-    setLeads((prev) => {
-      const next = prev.filter((lead) => lead.id !== id);
-      writeStoredLeads(next);
-      return next;
-    });
+    const current = readStoredLeads();
+    const next = current.filter((lead) => lead.id !== id);
+    writeStoredLeads(next);
+    setLeads(next);
     notifySameTabCRMListeners();
   }, []);
 

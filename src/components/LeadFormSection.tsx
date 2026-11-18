@@ -42,14 +42,14 @@ export function LeadFormSection({
   const validate = (): FormErrors => {
     const nextErrors: FormErrors = {};
     const cleanName = nama.trim();
-    const cleanPhone = telefon.replace(/[\s\-()]/g, '');
+    const cleanPhone = telefon.replace(/[\s\-()+]/g, '');
     const cleanEmail = emel.trim();
 
     if (cleanName.length < 2) {
       nextErrors.nama = 'Sila masukkan nama penuh (sekurang-kurangnya 2 aksara).';
     }
 
-    if (!/^(\+?6?0)?1[0-9]{8,9}$/.test(cleanPhone) && cleanPhone.length < 9) {
+    if (cleanPhone.length < 9 || !/^[0-9]{9,15}$/.test(cleanPhone)) {
       nextErrors.telefon = 'Sila masukkan nombor telefon WhatsApp yang sah (cth: 0123456789).';
     }
 
@@ -68,23 +68,46 @@ export function LeadFormSection({
     return nextErrors;
   };
 
+  const focusFirstInvalidField = (validationErrors: FormErrors) => {
+    const fieldOrder: (keyof FormErrors)[] = [
+      'nama',
+      'telefon',
+      'emel',
+      'kursus',
+      'pengalaman',
+    ];
+    const firstKey = fieldOrder.find((key) => Boolean(validationErrors[key]));
+    if (!firstKey) return;
+    const el = document.getElementById(firstKey);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.focus({ preventScroll: true });
+    }
+  };
+
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    e.stopPropagation();
+
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
+      focusFirstInvalidField(validationErrors);
       return;
     }
 
     setErrors({});
 
     const chosenExperience = pengalaman as ExperienceLevel;
+    const cleanName = nama.trim();
+    const cleanPhone = telefon.trim();
+    const cleanEmail = emel.trim().toLowerCase();
 
     const submitLead = onAddLead ?? crmAddLead;
     submitLead({
-      name: nama.trim(),
-      phone: telefon.trim(),
-      email: emel.trim(),
+      name: cleanName,
+      phone: cleanPhone,
+      email: cleanEmail,
       program: kursus,
       experienceLevel: chosenExperience,
       status: 'New Lead',
@@ -93,9 +116,9 @@ export function LeadFormSection({
     const rawMessage =
       `Hai, saya berminat dengan program welding anda.\n\n` +
       `*Maklumat Pendaftaran:*\n` +
-      `- Nama: ${nama.trim()}\n` +
-      `- No Telefon: ${telefon.trim()}\n` +
-      `- Emel: ${emel.trim()}\n` +
+      `- Nama: ${cleanName}\n` +
+      `- No Telefon: ${cleanPhone}\n` +
+      `- Emel: ${cleanEmail}\n` +
       `- Kursus Diminati: ${kursus}\n` +
       `- Tahap Pengalaman: ${chosenExperience}\n\n` +
       `Sila berikan butiran lanjut. Terima kasih!`;
@@ -160,7 +183,10 @@ export function LeadFormSection({
                 <span className="font-mono-spec text-xs font-semibold text-slate-400 mt-0.5">
                   02
                 </span>
-                <span>Butiran direkodkan serta dipindahkan ke WhatsApp rasmi Akademi Kemahiran Kimpalan (GIS).</span>
+                <span>
+                  Butiran direkodkan serta dipindahkan ke WhatsApp rasmi Akademi Kemahiran Kimpalan
+                  (GIS).
+                </span>
               </li>
               <li className="py-2.5 flex gap-3">
                 <span className="font-mono-spec text-xs font-semibold text-slate-400 mt-0.5">
@@ -174,7 +200,7 @@ export function LeadFormSection({
 
         {/* Right: Quick Lead Capture Form */}
         <div className="lg:col-span-7">
-          <div className="bg-white p-7 sm:p-10 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-sm">
             {submittedUrl ? (
               <div className="py-4 space-y-6" role="status" aria-live="polite">
                 <div className="flex items-start gap-3.5">
@@ -216,7 +242,7 @@ export function LeadFormSection({
                     href={submittedUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3.5 rounded-xl text-sm sm:text-base transition-colors whitespace-nowrap shrink-0"
+                    className="flex-1 inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3.5 rounded-xl text-sm sm:text-base transition-colors whitespace-nowrap shrink-0 touch-manipulation"
                   >
                     <MessageCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
                     <span>Buka WhatsApp Sekarang</span>
@@ -224,7 +250,7 @@ export function LeadFormSection({
                   <button
                     type="button"
                     onClick={handleResetForNewEntry}
-                    className="inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-5 py-3.5 rounded-xl text-sm transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    className="inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-5 py-3.5 rounded-xl text-sm transition-colors cursor-pointer whitespace-nowrap shrink-0 touch-manipulation"
                   >
                     Daftar Permohonan Lain
                   </button>
@@ -249,6 +275,7 @@ export function LeadFormSection({
                     id="nama"
                     name="nama"
                     type="text"
+                    autoComplete="name"
                     required
                     value={nama}
                     onChange={(e) => {
@@ -257,7 +284,7 @@ export function LeadFormSection({
                     }}
                     aria-invalid={Boolean(errors.nama)}
                     placeholder="cth: En. Razak bin Abdullah"
-                    className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                    className={`w-full px-4 py-3 rounded-xl border text-base sm:text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
                       errors.nama
                         ? 'border-rose-500 focus:ring-rose-500/30'
                         : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
@@ -283,6 +310,8 @@ export function LeadFormSection({
                       id="telefon"
                       name="telefon"
                       type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
                       required
                       value={telefon}
                       onChange={(e) => {
@@ -291,7 +320,7 @@ export function LeadFormSection({
                       }}
                       aria-invalid={Boolean(errors.telefon)}
                       placeholder="cth: 0123456789"
-                      className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                      className={`w-full px-4 py-3 rounded-xl border text-base sm:text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
                         errors.telefon
                           ? 'border-rose-500 focus:ring-rose-500/30'
                           : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
@@ -316,6 +345,10 @@ export function LeadFormSection({
                       id="emel"
                       name="emel"
                       type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      autoCorrect="off"
                       required
                       value={emel}
                       onChange={(e) => {
@@ -324,7 +357,7 @@ export function LeadFormSection({
                       }}
                       aria-invalid={Boolean(errors.emel)}
                       placeholder="cth: emel@contoh.com"
-                      className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                      className={`w-full px-4 py-3 rounded-xl border text-base sm:text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
                         errors.emel
                           ? 'border-rose-500 focus:ring-rose-500/30'
                           : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
@@ -359,7 +392,7 @@ export function LeadFormSection({
                         if (errors.kursus) setErrors((prev) => ({ ...prev, kursus: undefined }));
                       }}
                       aria-invalid={Boolean(errors.kursus)}
-                      className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                      className={`w-full px-4 py-3 rounded-xl border text-base sm:text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
                         errors.kursus
                           ? 'border-rose-500 focus:ring-rose-500/30'
                           : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
@@ -401,7 +434,7 @@ export function LeadFormSection({
                         }
                       }}
                       aria-invalid={Boolean(errors.pengalaman)}
-                      className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                      className={`w-full px-4 py-3 rounded-xl border text-base sm:text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
                         errors.pengalaman
                           ? 'border-rose-500 focus:ring-rose-500/30'
                           : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
@@ -427,7 +460,7 @@ export function LeadFormSection({
 
                 <button
                   type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold py-4 px-6 rounded-xl shadow-sm transition-all duration-150 hover:-translate-y-0.5 text-sm sm:text-base flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                  className="w-full min-h-[48px] bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold py-4 px-6 rounded-xl shadow-sm transition-colors duration-150 sm:hover:-translate-y-0.5 text-base flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
                 >
                   <MessageCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
                   <span>Hantar &amp; Terus ke WhatsApp</span>
