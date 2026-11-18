@@ -9,7 +9,8 @@ import {
   NewLeadInput,
 } from '../types/crm';
 
-export const CRM_STORAGE_KEY = 'welding_leads_data';
+export const STORAGE_KEY = 'welding_leads_data';
+export const CRM_STORAGE_KEY = STORAGE_KEY;
 const LEGACY_STORAGE_KEY = 'gis_welding_crm_leads_v1';
 const CRM_SYNC_EVENT = 'gis_welding_crm_sync';
 
@@ -69,6 +70,7 @@ function parseRawLeads(raw: string | null): LeadRecord[] {
         experienceLevel: normalizeExperience(
           item.experienceLevel ?? item.experience
         ),
+        notes: typeof item.notes === 'string' ? item.notes : '',
         status: isValidStatus(item.status) ? item.status : 'New Lead',
       }));
   } catch {
@@ -81,19 +83,18 @@ function readStoredLeads(): LeadRecord[] {
     return inMemoryLeadsFallback;
   }
   try {
-    const primaryRaw = window.localStorage.getItem(CRM_STORAGE_KEY);
+    const primaryRaw = window.localStorage.getItem(STORAGE_KEY);
     if (primaryRaw) {
       const normalized = parseRawLeads(primaryRaw);
       inMemoryLeadsFallback = normalized;
       return normalized;
     }
 
-    // One-time seamless migration if leads were saved under the previous key
     const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (legacyRaw) {
       const migrated = parseRawLeads(legacyRaw);
       if (migrated.length > 0) {
-        window.localStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(migrated));
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
         inMemoryLeadsFallback = migrated;
         return migrated;
       }
@@ -105,15 +106,18 @@ function readStoredLeads(): LeadRecord[] {
   }
 }
 
-function writeStoredLeads(records: LeadRecord[]): void {
+function writeStoredLeads(records: LeadRecord[]): boolean {
   inMemoryLeadsFallback = records;
   if (typeof window === 'undefined' || !isStorageAvailable()) {
-    return;
+    console.warn('[CRM] localStorage tidak tersedia, rekod disimpan dalam memori sesi.');
+    return false;
   }
   try {
-    window.localStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(records));
-  } catch {
-    // Keep inMemoryLeadsFallback populated even if mobile quota/private mode throws
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    return true;
+  } catch (error) {
+    console.error('[CRM] Gagal menulis ke localStorage:', error);
+    return false;
   }
 }
 
@@ -152,6 +156,7 @@ export function useLeadCRM() {
 
   const refreshLeads = useCallback(() => {
     const fresh = readStoredLeads();
+    console.log(`[CRM] Muat semula rekod (${STORAGE_KEY}):`, fresh.length);
     setLeads((prev) =>
       JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh
     );
@@ -161,7 +166,7 @@ export function useLeadCRM() {
     refreshLeads();
 
     const handleStorageSync = (event: StorageEvent) => {
-      if (event.key === CRM_STORAGE_KEY || event.key === null) {
+      if (event.key === STORAGE_KEY || event.key === null) {
         refreshLeads();
       }
     };
@@ -193,12 +198,20 @@ export function useLeadCRM() {
       email: input.email.trim(),
       program: input.program,
       experienceLevel: normalizeExperience(input.experienceLevel ?? input.experience),
+      notes: input.notes ? input.notes.trim() : '',
       status: isValidStatus(input.status) ? input.status : 'New Lead',
     };
 
     const current = readStoredLeads();
     const next = [newRecord, ...current];
-    writeStoredLeads(next);
+    const persisted = writeStoredLeads(next);
+
+    console.log('[CRM] Lead baharu disimpan:', newRecord);
+    console.log(`[CRM] Status localStorage (${STORAGE_KEY}):`, {
+      persisted,
+      totalLeads: next.length,
+    });
+
     setLeads(next);
     notifySameTabCRMListeners();
     return newRecord;
@@ -210,6 +223,7 @@ export function useLeadCRM() {
       lead.id === id ? { ...lead, status } : lead
     );
     writeStoredLeads(next);
+    console.log('[CRM] Status lead dikemas kini:', { id, status });
     setLeads(next);
     notifySameTabCRMListeners();
   }, []);
@@ -218,6 +232,7 @@ export function useLeadCRM() {
     const current = readStoredLeads();
     const next = current.filter((lead) => lead.id !== id);
     writeStoredLeads(next);
+    console.log('[CRM] Lead dipadam:', { id, remainingLeads: next.length });
     setLeads(next);
     notifySameTabCRMListeners();
   }, []);
@@ -231,6 +246,7 @@ export function useLeadCRM() {
       'Emel',
       'Program Diminati',
       'Tahap Pengalaman',
+      'Catatan',
       'Status',
     ];
 
@@ -242,6 +258,7 @@ export function useLeadCRM() {
       escapeCsvCell(lead.email),
       escapeCsvCell(lead.program),
       escapeCsvCell(lead.experienceLevel),
+      escapeCsvCell(lead.notes ?? ''),
       escapeCsvCell(lead.status),
     ]);
 

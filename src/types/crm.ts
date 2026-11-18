@@ -13,6 +13,7 @@ export interface LeadRecord {
   email: string;
   program: string;
   experienceLevel: ExperienceLevel;
+  notes?: string;
   status: LeadStatus;
 }
 
@@ -25,6 +26,7 @@ export interface NewLeadInput {
   program: string;
   experienceLevel?: ExperienceLevel;
   experience?: ExperienceLevel;
+  notes?: string;
   status?: LeadStatus;
 }
 

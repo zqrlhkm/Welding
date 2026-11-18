@@ -2,12 +2,11 @@ import { AlertCircle, CheckCircle2, MessageCircle, PhoneCall } from 'lucide-reac
 import { FormEvent, useEffect, useState } from 'react';
 import { DISPLAY_PHONE, PROGRAM_TRACKS, WHATSAPP_NUMBER } from '../data/programData';
 import { useLeadCRM } from '../hooks/useLeadCRM';
-import { EXPERIENCE_LEVELS, ExperienceLevel, NewLeadInput } from '../types/crm';
+import { EXPERIENCE_LEVELS, ExperienceLevel, LeadRecord } from '../types/crm';
 
 interface LeadFormSectionProps {
   selectedProgram: string;
   onSelectProgram: (programTitle: string) => void;
-  onAddLead?: (lead: NewLeadInput) => void;
 }
 
 interface FormErrors {
@@ -21,15 +20,16 @@ interface FormErrors {
 export function LeadFormSection({
   selectedProgram,
   onSelectProgram,
-  onAddLead,
 }: LeadFormSectionProps) {
-  const { addLead: crmAddLead } = useLeadCRM();
+  const { addLead } = useLeadCRM();
   const [nama, setNama] = useState('');
   const [telefon, setTelefon] = useState('');
   const [emel, setEmel] = useState('');
   const [kursus, setKursus] = useState(selectedProgram);
   const [pengalaman, setPengalaman] = useState<ExperienceLevel | ''>('');
+  const [catatan, setCatatan] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
+  const [submittedLead, setSubmittedLead] = useState<LeadRecord | null>(null);
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,6 +91,7 @@ export function LeadFormSection({
 
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
+      console.warn('[LeadFormSection] Pengesahan borang gagal:', validationErrors);
       setErrors(validationErrors);
       focusFirstInvalidField(validationErrors);
       return;
@@ -102,17 +103,28 @@ export function LeadFormSection({
     const cleanName = nama.trim();
     const cleanPhone = telefon.trim();
     const cleanEmail = emel.trim().toLowerCase();
+    const cleanNotes = catatan.trim();
 
-    const submitLead = onAddLead ?? crmAddLead;
-    submitLead({
+    console.log('[LeadFormSection] Menghantar data ke addLead()...', {
       name: cleanName,
       phone: cleanPhone,
       email: cleanEmail,
       program: kursus,
-      experienceLevel: chosenExperience,
+      experience: chosenExperience,
+      notes: cleanNotes,
+    });
+
+    const savedRecord = addLead({
+      name: cleanName,
+      phone: cleanPhone,
+      email: cleanEmail,
+      program: kursus,
+      experience: chosenExperience,
+      notes: cleanNotes,
       status: 'New Lead',
     });
 
+    const notesLine = cleanNotes ? `\n- Catatan: ${cleanNotes}` : '';
     const rawMessage =
       `Hai, saya berminat dengan program welding anda.\n\n` +
       `*Maklumat Pendaftaran:*\n` +
@@ -120,18 +132,22 @@ export function LeadFormSection({
       `- No Telefon: ${cleanPhone}\n` +
       `- Emel: ${cleanEmail}\n` +
       `- Kursus Diminati: ${kursus}\n` +
-      `- Tahap Pengalaman: ${chosenExperience}\n\n` +
+      `- Tahap Pengalaman: ${chosenExperience}${notesLine}\n\n` +
       `Sila berikan butiran lanjut. Terima kasih!`;
 
     const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(rawMessage)}`;
+    setSubmittedLead(savedRecord);
     setSubmittedUrl(waUrl);
-  };
 
-  const handleResetForNewEntry = () => {
     setNama('');
     setTelefon('');
     setEmel('');
     setPengalaman('');
+    setCatatan('');
+  };
+
+  const handleResetForNewEntry = () => {
+    setSubmittedLead(null);
     setSubmittedUrl(null);
   };
 
@@ -201,7 +217,7 @@ export function LeadFormSection({
         {/* Right: Quick Lead Capture Form */}
         <div className="lg:col-span-7">
           <div className="bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-sm">
-            {submittedUrl ? (
+            {submittedUrl && submittedLead ? (
               <div className="py-4 space-y-6" role="status" aria-live="polite">
                 <div className="flex items-start gap-3.5">
                   <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
@@ -212,29 +228,38 @@ export function LeadFormSection({
                       Pendaftaran Berjaya Direkodkan
                     </h3>
                     <p className="text-sm text-slate-600 mt-1.5 leading-relaxed">
-                      Maklumat anda telah disimpan dalam sistem kami. Klik butang di bawah untuk
-                      membuka WhatsApp penasihat kami ({DISPLAY_PHONE}).
+                      Rekod anda (<span className="font-mono-spec font-semibold">{submittedLead.id}</span>) telah disimpan. Klik butang di bawah untuk membuka WhatsApp penasihat kami ({DISPLAY_PHONE}).
                     </p>
                   </div>
                 </div>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 space-y-1.5">
                   <div>
-                    <span className="font-semibold text-slate-900">Nama:</span> {nama}
+                    <span className="font-semibold text-slate-900">Nama:</span>{' '}
+                    {submittedLead.name}
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-900">No. Telefon:</span> {telefon}
+                    <span className="font-semibold text-slate-900">No. Telefon:</span>{' '}
+                    {submittedLead.phone}
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-900">Emel:</span> {emel}
+                    <span className="font-semibold text-slate-900">Emel:</span>{' '}
+                    {submittedLead.email}
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-900">Program:</span> {kursus}
+                    <span className="font-semibold text-slate-900">Program:</span>{' '}
+                    {submittedLead.program}
                   </div>
                   <div>
                     <span className="font-semibold text-slate-900">Tahap Pengalaman:</span>{' '}
-                    {pengalaman}
+                    {submittedLead.experienceLevel}
                   </div>
+                  {submittedLead.notes && (
+                    <div>
+                      <span className="font-semibold text-slate-900">Catatan:</span>{' '}
+                      {submittedLead.notes}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -263,7 +288,7 @@ export function LeadFormSection({
                     Borang Pertanyaan Program Welding
                   </h3>
                   <p className="text-sm text-slate-600 mt-1">
-                    Semua ruangan wajib diisi bagi memudahkan konsultasi dan penempatan sesi.
+                    Lengkapkan maklumat di bawah untuk konsultasi pantas bersama penasihat kami.
                   </p>
                 </div>
 
@@ -456,6 +481,24 @@ export function LeadFormSection({
                       </p>
                     )}
                   </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="catatan"
+                    className="block text-sm font-semibold text-slate-800 mb-1.5"
+                  >
+                    Catatan / Soalan Tambahan (Pilihan)
+                  </label>
+                  <textarea
+                    id="catatan"
+                    name="catatan"
+                    rows={2}
+                    value={catatan}
+                    onChange={(e) => setCatatan(e.target.value)}
+                    placeholder="cth: Anak berumur 16 tahun, ingin tahu tarikh pengambilan terdekat atau kemudahan asrama."
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-base sm:text-sm bg-slate-50/70 text-slate-950 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:border-slate-900 focus:ring-slate-900/15 focus:bg-white transition-colors resize-none"
+                  />
                 </div>
 
                 <button

@@ -100,7 +100,8 @@ export function AdminDashboard({
         lead.name.toLowerCase().includes(q) ||
         lead.phone.toLowerCase().includes(q) ||
         lead.email.toLowerCase().includes(q) ||
-        lead.program.toLowerCase().includes(q)
+        lead.program.toLowerCase().includes(q) ||
+        (lead.notes ?? '').toLowerCase().includes(q)
       );
     });
   }, [leads, searchQuery, programFilter, statusFilter]);
@@ -460,6 +461,11 @@ export function AdminDashboard({
                           <div className="text-xs text-slate-500 mt-0.5">
                             {lead.experienceLevel}
                           </div>
+                          {lead.notes && (
+                            <div className="text-xs text-slate-600 mt-1 italic">
+                              &ldquo;{lead.notes}&rdquo;
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           <select

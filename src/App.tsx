@@ -128,7 +128,6 @@ export default function App() {
         <LeadFormSection
           selectedProgram={selectedProgram}
           onSelectProgram={setSelectedProgram}
-          onAddLead={addLead}
         />
       </main>
       <Footer onOpenAdmin={openAdmin} />
