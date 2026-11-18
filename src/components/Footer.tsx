@@ -1,7 +1,12 @@
 import { DISPLAY_PHONE, WHATSAPP_NUMBER } from '../data/programData';
 import { BrandLogo } from './BrandLogo';
 
-export function Footer() {
+interface FooterProps {
+  onOpenAdmin: () => void;
+  leadCount: number;
+}
+
+export function Footer({ onOpenAdmin, leadCount }: FooterProps) {
   return (
     <footer className="bg-white border-t border-slate-200 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-xs sm:text-sm text-slate-600">
@@ -28,6 +33,13 @@ export function Footer() {
           >
             WhatsApp: {DISPLAY_PHONE}
           </a>
+          <button
+            type="button"
+            onClick={onOpenAdmin}
+            className="text-slate-500 hover:text-slate-950 underline underline-offset-4 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            Portal CRM ({leadCount})
+          </button>
         </nav>
 
         <p className="text-slate-500 text-center md:text-right">

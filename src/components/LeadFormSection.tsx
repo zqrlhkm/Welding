@@ -1,10 +1,12 @@
 import { AlertCircle, CheckCircle2, MessageCircle, PhoneCall } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { DISPLAY_PHONE, PROGRAM_TRACKS, WHATSAPP_NUMBER } from '../data/programData';
+import { EXPERIENCE_LEVELS, ExperienceLevel, NewLeadInput } from '../types/crm';
 
 interface LeadFormSectionProps {
   selectedProgram: string;
   onSelectProgram: (programTitle: string) => void;
+  onAddLead: (lead: NewLeadInput) => void;
 }
 
 interface FormErrors {
@@ -12,16 +14,19 @@ interface FormErrors {
   telefon?: string;
   emel?: string;
   kursus?: string;
+  pengalaman?: string;
 }
 
 export function LeadFormSection({
   selectedProgram,
   onSelectProgram,
+  onAddLead,
 }: LeadFormSectionProps) {
   const [nama, setNama] = useState('');
   const [telefon, setTelefon] = useState('');
   const [emel, setEmel] = useState('');
   const [kursus, setKursus] = useState(selectedProgram);
+  const [pengalaman, setPengalaman] = useState<ExperienceLevel | ''>('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
 
@@ -54,6 +59,10 @@ export function LeadFormSection({
       nextErrors.kursus = 'Sila pilih satu program latihan yang diminati.';
     }
 
+    if (!pengalaman) {
+      nextErrors.pengalaman = 'Sila pilih tahap pengalaman kimpalan semasa.';
+    }
+
     return nextErrors;
   };
 
@@ -67,19 +76,29 @@ export function LeadFormSection({
 
     setErrors({});
 
+    const chosenExperience = pengalaman as ExperienceLevel;
+
+    onAddLead({
+      name: nama.trim(),
+      phone: telefon.trim(),
+      email: emel.trim(),
+      program: kursus,
+      experienceLevel: chosenExperience,
+    });
+
     const rawMessage =
       `Hai, saya berminat dengan program welding anda.\n\n` +
       `*Maklumat Pendaftaran:*\n` +
       `- Nama: ${nama.trim()}\n` +
       `- No Telefon: ${telefon.trim()}\n` +
       `- Emel: ${emel.trim()}\n` +
-      `- Kursus Diminati: ${kursus}\n\n` +
+      `- Kursus Diminati: ${kursus}\n` +
+      `- Tahap Pengalaman: ${chosenExperience}\n\n` +
       `Sila berikan butiran lanjut. Terima kasih!`;
 
     const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(rawMessage)}`;
     setSubmittedUrl(waUrl);
 
-    // Trigger anchor navigation when outside restricted iframe contexts
     try {
       if (window.top === window.self) {
         window.location.assign(waUrl);
@@ -87,6 +106,14 @@ export function LeadFormSection({
     } catch {
       // Sandboxed preview keeps user inside confirmation card with direct clickable link
     }
+  };
+
+  const handleResetForNewEntry = () => {
+    setNama('');
+    setTelefon('');
+    setEmel('');
+    setPengalaman('');
+    setSubmittedUrl(null);
   };
 
   return (
@@ -108,7 +135,7 @@ export function LeadFormSection({
               Dapatkan Info Penuh &amp; Slot Kemasukan Untuk Anak Anda
             </h2>
             <p className="text-slate-600 text-sm sm:text-base mt-3 leading-relaxed">
-              Isikan 4 maklumat asas di sebelah. Mesej pendaftaran anda akan disusun automatik dan
+              Isikan maklumat asas di sebelah. Rekod pendaftaran anda akan disimpan dan mesej
               dihubungkan terus kepada penasihat akademik Akademi Kemahiran Kimpalan (GIS).
             </p>
           </div>
@@ -131,13 +158,13 @@ export function LeadFormSection({
                 <span className="font-mono-spec text-xs font-semibold text-slate-400 mt-0.5">
                   01
                 </span>
-                <span>Lengkapkan nama, nombor WhatsApp, emel, dan pilihan kursus.</span>
+                <span>Lengkapkan nama, nombor WhatsApp, emel, program, dan tahap pengalaman.</span>
               </li>
               <li className="py-2.5 flex gap-3">
                 <span className="font-mono-spec text-xs font-semibold text-slate-400 mt-0.5">
                   02
                 </span>
-                <span>Butiran terus dipindahkan ke tetingkap WhatsApp rasmi Akademi Kemahiran Kimpalan (GIS).</span>
+                <span>Butiran direkodkan serta dipindahkan ke WhatsApp rasmi Akademi Kemahiran Kimpalan (GIS).</span>
               </li>
               <li className="py-2.5 flex gap-3">
                 <span className="font-mono-spec text-xs font-semibold text-slate-400 mt-0.5">
@@ -160,16 +187,16 @@ export function LeadFormSection({
                   </div>
                   <div>
                     <h3 className="text-xl font-extrabold text-slate-950">
-                      Mesej Pendaftaran Anda Sedia Dihantar
+                      Pendaftaran Berjaya Direkodkan
                     </h3>
                     <p className="text-sm text-slate-600 mt-1.5 leading-relaxed">
-                      Klik butang di bawah untuk membuka WhatsApp penasihat kami ({DISPLAY_PHONE})
-                      dengan maklumat pendaftaran yang telah diisi lengkap.
+                      Maklumat anda telah disimpan dalam sistem kami. Klik butang di bawah untuk
+                      membuka WhatsApp penasihat kami ({DISPLAY_PHONE}).
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 space-y-1">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 space-y-1.5">
                   <div>
                     <span className="font-semibold text-slate-900">Nama:</span> {nama}
                   </div>
@@ -181,6 +208,10 @@ export function LeadFormSection({
                   </div>
                   <div>
                     <span className="font-semibold text-slate-900">Program:</span> {kursus}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-900">Tahap Pengalaman:</span>{' '}
+                    {pengalaman}
                   </div>
                 </div>
 
@@ -196,10 +227,10 @@ export function LeadFormSection({
                   </a>
                   <button
                     type="button"
-                    onClick={() => setSubmittedUrl(null)}
+                    onClick={handleResetForNewEntry}
                     className="inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-5 py-3.5 rounded-xl text-sm transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    Kemaskini Maklumat
+                    Daftar Permohonan Lain
                   </button>
                 </div>
               </div>
@@ -210,7 +241,7 @@ export function LeadFormSection({
                     Borang Pertanyaan Program Welding
                   </h3>
                   <p className="text-sm text-slate-600 mt-1">
-                    Semua ruangan bertanda wajib diisi bagi memudahkan konsultasi.
+                    Semua ruangan wajib diisi bagi memudahkan konsultasi dan penempatan sesi.
                   </p>
                 </div>
 
@@ -312,46 +343,90 @@ export function LeadFormSection({
                   </div>
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="kursus"
-                    className="block text-sm font-semibold text-slate-800 mb-1.5"
-                  >
-                    Kursus / Program Yang Diminati
-                  </label>
-                  <select
-                    id="kursus"
-                    name="kursus"
-                    required
-                    value={kursus}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setKursus(val);
-                      onSelectProgram(val);
-                      if (errors.kursus) setErrors((prev) => ({ ...prev, kursus: undefined }));
-                    }}
-                    aria-invalid={Boolean(errors.kursus)}
-                    className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
-                      errors.kursus
-                        ? 'border-rose-500 focus:ring-rose-500/30'
-                        : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
-                    }`}
-                  >
-                    <option value="" disabled>
-                      -- Sila Pilih Program --
-                    </option>
-                    {PROGRAM_TRACKS.map((track) => (
-                      <option key={track.id} value={track.title}>
-                        {track.title}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label
+                      htmlFor="kursus"
+                      className="block text-sm font-semibold text-slate-800 mb-1.5"
+                    >
+                      Kursus / Program Yang Diminati
+                    </label>
+                    <select
+                      id="kursus"
+                      name="kursus"
+                      required
+                      value={kursus}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setKursus(val);
+                        onSelectProgram(val);
+                        if (errors.kursus) setErrors((prev) => ({ ...prev, kursus: undefined }));
+                      }}
+                      aria-invalid={Boolean(errors.kursus)}
+                      className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                        errors.kursus
+                          ? 'border-rose-500 focus:ring-rose-500/30'
+                          : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
+                      }`}
+                    >
+                      <option value="" disabled>
+                        -- Sila Pilih Program --
                       </option>
-                    ))}
-                  </select>
-                  {errors.kursus && (
-                    <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-700">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                      <span>{errors.kursus}</span>
-                    </p>
-                  )}
+                      {PROGRAM_TRACKS.map((track) => (
+                        <option key={track.id} value={track.title}>
+                          {track.title}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.kursus && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-700">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        <span>{errors.kursus}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="pengalaman"
+                      className="block text-sm font-semibold text-slate-800 mb-1.5"
+                    >
+                      Tahap Pengalaman Pelajar
+                    </label>
+                    <select
+                      id="pengalaman"
+                      name="pengalaman"
+                      required
+                      value={pengalaman}
+                      onChange={(e) => {
+                        setPengalaman(e.target.value as ExperienceLevel);
+                        if (errors.pengalaman) {
+                          setErrors((prev) => ({ ...prev, pengalaman: undefined }));
+                        }
+                      }}
+                      aria-invalid={Boolean(errors.pengalaman)}
+                      className={`w-full px-4 py-3 rounded-xl border text-sm bg-slate-50/70 text-slate-950 focus:outline-none focus:ring-2 focus:bg-white transition-colors ${
+                        errors.pengalaman
+                          ? 'border-rose-500 focus:ring-rose-500/30'
+                          : 'border-slate-300 focus:border-slate-900 focus:ring-slate-900/15'
+                      }`}
+                    >
+                      <option value="" disabled>
+                        -- Sila Pilih Tahap --
+                      </option>
+                      {EXPERIENCE_LEVELS.map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.pengalaman && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-700">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        <span>{errors.pengalaman}</span>
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <button
