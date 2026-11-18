@@ -3,10 +3,9 @@ import { BrandLogo } from './BrandLogo';
 
 interface FooterProps {
   onOpenAdmin: () => void;
-  leadCount: number;
 }
 
-export function Footer({ onOpenAdmin, leadCount }: FooterProps) {
+export function Footer({ onOpenAdmin }: FooterProps) {
   return (
     <footer className="bg-white border-t border-slate-200 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-xs sm:text-sm text-slate-600">
@@ -36,9 +35,9 @@ export function Footer({ onOpenAdmin, leadCount }: FooterProps) {
           <button
             type="button"
             onClick={onOpenAdmin}
-            className="text-slate-500 hover:text-slate-950 underline underline-offset-4 transition-colors cursor-pointer whitespace-nowrap"
+            className="text-xs text-slate-500 hover:text-slate-900 underline underline-offset-4 transition-colors cursor-pointer whitespace-nowrap"
           >
-            Portal CRM ({leadCount})
+            Akses Admin CRM
           </button>
         </nav>
 

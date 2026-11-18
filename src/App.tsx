@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { AdminDashboard } from './components/AdminDashboard';
+import { AdminLogin } from './components/AdminLogin';
 import { FaqSection } from './components/FaqSection';
 import { Footer } from './components/Footer';
 import { HeroBanner } from './components/HeroBanner';
@@ -15,11 +16,21 @@ import { ProgramsSection } from './components/ProgramsSection';
 import { SolutionSection } from './components/SolutionSection';
 import { useLeadCRM } from './hooks/useLeadCRM';
 
+const ADMIN_AUTH_KEY = 'welding_admin_auth';
+
 export default function App() {
   const [selectedProgram, setSelectedProgram] = useState('');
   const [isAdminView, setIsAdminView] = useState(() =>
     typeof window !== 'undefined' ? window.location.hash === '#admin' : false
   );
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem(ADMIN_AUTH_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const { leads, addLead, updateLeadStatus, deleteLead, exportLeadsToCSV } =
     useLeadCRM();
@@ -50,7 +61,34 @@ export default function App() {
     }
   };
 
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    try {
+      window.localStorage.setItem(ADMIN_AUTH_KEY, 'true');
+    } catch {
+      // Ignore storage errors silently
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    try {
+      window.localStorage.removeItem(ADMIN_AUTH_KEY);
+    } catch {
+      // Ignore storage errors silently
+    }
+  };
+
   if (isAdminView) {
+    if (!isAuthenticated) {
+      return (
+        <AdminLogin
+          onLoginSuccess={handleLoginSuccess}
+          onBackToSite={() => exitAdmin(false)}
+        />
+      );
+    }
+
     return (
       <AdminDashboard
         leads={leads}
@@ -59,6 +97,7 @@ export default function App() {
         onDeleteLead={deleteLead}
         onExportCSV={exportLeadsToCSV}
         onExitAdmin={exitAdmin}
+        onLogout={handleLogout}
       />
     );
   }
@@ -81,7 +120,7 @@ export default function App() {
           onAddLead={addLead}
         />
       </main>
-      <Footer onOpenAdmin={openAdmin} leadCount={leads.length} />
+      <Footer onOpenAdmin={openAdmin} />
     </div>
   );
 }

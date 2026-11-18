@@ -1,6 +1,8 @@
 {
   "name": "GIS Akademi Kemahiran — Program Welding",
-  "description": "Landing page rasmi program latihan kemahiran welding profesional untuk remaja 15 tahun ke atas oleh GIS Akademi Kemahiran.",
+  "description": "program latihan kemahiran welding profesional untuk remaja 15 tahun ke atas oleh GIS Akademi Kemahiran.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

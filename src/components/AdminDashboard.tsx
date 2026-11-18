@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Download,
   ExternalLink,
+  LogOut,
   Plus,
   Search,
   Trash2,
@@ -28,6 +29,7 @@ interface AdminDashboardProps {
   onDeleteLead: (id: string) => void;
   onExportCSV: (records: LeadRecord[]) => void;
   onExitAdmin: (scrollToForm?: boolean) => void;
+  onLogout: () => void;
 }
 
 const STATUS_SELECT_STYLES: Record<LeadStatus, string> = {
@@ -51,6 +53,7 @@ export function AdminDashboard({
   onDeleteLead,
   onExportCSV,
   onExitAdmin,
+  onLogout,
 }: AdminDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [programFilter, setProgramFilter] = useState<string>('ALL');
@@ -171,6 +174,14 @@ export function AdminDashboard({
             >
               <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span>Eksport CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span className="hidden sm:inline">Log Keluar</span>
             </button>
           </div>
         </div>
