@@ -1,31 +1,73 @@
 import { useCallback, useEffect, useState } from 'react';
-import { LeadRecord, LeadStatus, NewLeadInput } from '../types/crm';
+import {
+  EXPERIENCE_LEVELS,
+  ExperienceLevel,
+  LEAD_STATUSES,
+  LeadRecord,
+  LeadStatus,
+  NewLeadInput,
+} from '../types/crm';
 
-const STORAGE_KEY = 'gis_welding_crm_leads_v1';
+export const CRM_STORAGE_KEY = 'gis_welding_crm_leads_v1';
+
+function isValidStatus(value: unknown): value is LeadStatus {
+  return typeof value === 'string' && LEAD_STATUSES.includes(value as LeadStatus);
+}
+
+function normalizeExperience(value: unknown): ExperienceLevel {
+  if (
+    typeof value === 'string' &&
+    EXPERIENCE_LEVELS.includes(value as ExperienceLevel)
+  ) {
+    return value as ExperienceLevel;
+  }
+  return EXPERIENCE_LEVELS[0];
+}
 
 function readStoredLeads(): LeadRecord[] {
   if (typeof window === 'undefined') {
     return [];
   }
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(CRM_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (item): item is LeadRecord =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof item.id === 'string' &&
-        typeof item.name === 'string' &&
-        typeof item.phone === 'string' &&
-        typeof item.email === 'string' &&
-        typeof item.program === 'string' &&
-        typeof item.createdAt === 'string' &&
-        typeof item.status === 'string'
-    );
+    return parsed
+      .filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === 'object' &&
+          item !== null &&
+          typeof item.id === 'string' &&
+          typeof item.name === 'string' &&
+          typeof item.phone === 'string' &&
+          typeof item.email === 'string' &&
+          typeof item.program === 'string' &&
+          typeof item.createdAt === 'string'
+      )
+      .map((item) => ({
+        id: item.id as string,
+        createdAt: item.createdAt as string,
+        name: item.name as string,
+        phone: item.phone as string,
+        email: item.email as string,
+        program: item.program as string,
+        experienceLevel: normalizeExperience(item.experienceLevel),
+        status: isValidStatus(item.status) ? item.status : 'New Lead',
+      }));
   } catch {
     return [];
+  }
+}
+
+function writeStoredLeads(records: LeadRecord[]): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(CRM_STORAGE_KEY, JSON.stringify(records));
+  } catch {
+    // Ignore storage quota errors silently
   }
 }
 
@@ -56,12 +98,18 @@ export function useLeadCRM() {
   const [leads, setLeads] = useState<LeadRecord[]>(() => readStoredLeads());
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
-    } catch {
-      // Ignore storage quota errors silently
-    }
+    writeStoredLeads(leads);
   }, [leads]);
+
+  useEffect(() => {
+    const handleStorageSync = (event: StorageEvent) => {
+      if (event.key === CRM_STORAGE_KEY) {
+        setLeads(readStoredLeads());
+      }
+    };
+    window.addEventListener('storage', handleStorageSync);
+    return () => window.removeEventListener('storage', handleStorageSync);
+  }, []);
 
   const addLead = useCallback((input: NewLeadInput): LeadRecord => {
     const newRecord: LeadRecord = {
@@ -74,22 +122,34 @@ export function useLeadCRM() {
       phone: input.phone.trim(),
       email: input.email.trim(),
       program: input.program,
-      experienceLevel: input.experienceLevel,
+      experienceLevel: normalizeExperience(input.experienceLevel),
       status: 'New Lead',
     };
 
-    setLeads((prev) => [newRecord, ...prev]);
+    setLeads((prev) => {
+      const next = [newRecord, ...prev];
+      writeStoredLeads(next);
+      return next;
+    });
     return newRecord;
   }, []);
 
   const updateLeadStatus = useCallback((id: string, status: LeadStatus) => {
-    setLeads((prev) =>
-      prev.map((lead) => (lead.id === id ? { ...lead, status } : lead))
-    );
+    setLeads((prev) => {
+      const next = prev.map((lead) =>
+        lead.id === id ? { ...lead, status } : lead
+      );
+      writeStoredLeads(next);
+      return next;
+    });
   }, []);
 
   const deleteLead = useCallback((id: string) => {
-    setLeads((prev) => prev.filter((lead) => lead.id !== id));
+    setLeads((prev) => {
+      const next = prev.filter((lead) => lead.id !== id);
+      writeStoredLeads(next);
+      return next;
+    });
   }, []);
 
   const exportLeadsToCSV = useCallback((recordsToExport: LeadRecord[]) => {

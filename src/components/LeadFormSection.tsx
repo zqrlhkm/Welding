@@ -98,14 +98,6 @@ export function LeadFormSection({
 
     const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(rawMessage)}`;
     setSubmittedUrl(waUrl);
-
-    try {
-      if (window.top === window.self) {
-        window.location.assign(waUrl);
-      }
-    } catch {
-      // Sandboxed preview keeps user inside confirmation card with direct clickable link
-    }
   };
 
   const handleResetForNewEntry = () => {
