@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, MessageCircle, PhoneCall } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, MessageCircle, PhoneCall } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { DISPLAY_PHONE, PROGRAM_TRACKS, WHATSAPP_NUMBER } from '../data/programData';
 import { useLeadCRM } from '../hooks/useLeadCRM';
@@ -21,7 +21,7 @@ export function LeadFormSection({
   selectedProgram,
   onSelectProgram,
 }: LeadFormSectionProps) {
-  const { addLead } = useLeadCRM();
+  const { addLead, isSubmitting, submitError } = useLeadCRM();
   const [nama, setNama] = useState('');
   const [telefon, setTelefon] = useState('');
   const [emel, setEmel] = useState('');
@@ -29,6 +29,7 @@ export function LeadFormSection({
   const [pengalaman, setPengalaman] = useState<ExperienceLevel | ''>('');
   const [catatan, setCatatan] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
+  const [formSubmitError, setFormSubmitError] = useState<string | null>(null);
   const [submittedLead, setSubmittedLead] = useState<LeadRecord | null>(null);
   const [submittedUrl, setSubmittedUrl] = useState<string | null>(null);
 
@@ -85,9 +86,11 @@ export function LeadFormSection({
     }
   };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (isSubmitting) return;
 
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
@@ -98,6 +101,7 @@ export function LeadFormSection({
     }
 
     setErrors({});
+    setFormSubmitError(null);
 
     const chosenExperience = pengalaman as ExperienceLevel;
     const cleanName = nama.trim();
@@ -105,7 +109,7 @@ export function LeadFormSection({
     const cleanEmail = emel.trim().toLowerCase();
     const cleanNotes = catatan.trim();
 
-    console.log('[LeadFormSection] Menghantar data ke addLead()...', {
+    console.log('[LeadFormSection] Menghantar data ke Google Sheets via addLead()...', {
       name: cleanName,
       phone: cleanPhone,
       email: cleanEmail,
@@ -114,42 +118,54 @@ export function LeadFormSection({
       notes: cleanNotes,
     });
 
-    const savedRecord = addLead({
-      name: cleanName,
-      phone: cleanPhone,
-      email: cleanEmail,
-      program: kursus,
-      experience: chosenExperience,
-      notes: cleanNotes,
-      status: 'New Lead',
-    });
+    try {
+      const savedRecord = await addLead({
+        name: cleanName,
+        phone: cleanPhone,
+        email: cleanEmail,
+        program: kursus,
+        experience: chosenExperience,
+        notes: cleanNotes,
+        status: 'New Lead',
+      });
 
-    const notesLine = cleanNotes ? `\n- Catatan: ${cleanNotes}` : '';
-    const rawMessage =
-      `Hai, saya berminat dengan program welding anda.\n\n` +
-      `*Maklumat Pendaftaran:*\n` +
-      `- Nama: ${cleanName}\n` +
-      `- No Telefon: ${cleanPhone}\n` +
-      `- Emel: ${cleanEmail}\n` +
-      `- Kursus Diminati: ${kursus}\n` +
-      `- Tahap Pengalaman: ${chosenExperience}${notesLine}\n\n` +
-      `Sila berikan butiran lanjut. Terima kasih!`;
+      const notesLine = cleanNotes ? `\n- Catatan: ${cleanNotes}` : '';
+      const rawMessage =
+        `Hai, saya berminat dengan program welding anda.\n\n` +
+        `*Maklumat Pendaftaran:*\n` +
+        `- Nama: ${cleanName}\n` +
+        `- No Telefon: ${cleanPhone}\n` +
+        `- Emel: ${cleanEmail}\n` +
+        `- Kursus Diminati: ${kursus}\n` +
+        `- Tahap Pengalaman: ${chosenExperience}${notesLine}\n\n` +
+        `Sila berikan butiran lanjut. Terima kasih!`;
 
-    const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(rawMessage)}`;
-    setSubmittedLead(savedRecord);
-    setSubmittedUrl(waUrl);
+      const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(rawMessage)}`;
+      setSubmittedLead(savedRecord);
+      setSubmittedUrl(waUrl);
 
-    setNama('');
-    setTelefon('');
-    setEmel('');
-    setPengalaman('');
-    setCatatan('');
+      setNama('');
+      setTelefon('');
+      setEmel('');
+      setPengalaman('');
+      setCatatan('');
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Gagal menyimpan rekod pendaftaran ke Google Sheets. Sila cuba lagi.';
+      console.error('[LeadFormSection] Gagal menyimpan lead:', err);
+      setFormSubmitError(message);
+    }
   };
 
   const handleResetForNewEntry = () => {
     setSubmittedLead(null);
     setSubmittedUrl(null);
+    setFormSubmitError(null);
   };
+
+  const activeSubmitError = formSubmitError || submitError;
 
   return (
     <section
@@ -501,12 +517,35 @@ export function LeadFormSection({
                   />
                 </div>
 
+                {activeSubmitError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2.5 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs sm:text-sm"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+                    <div>
+                      <p className="font-bold">Gagal Menyimpan Rekod</p>
+                      <p className="mt-0.5">{activeSubmitError}</p>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full min-h-[48px] bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold py-4 px-6 rounded-xl shadow-sm transition-colors duration-150 sm:hover:-translate-y-0.5 text-base flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                  disabled={isSubmitting}
+                  className="w-full min-h-[48px] bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-emerald-400 disabled:cursor-not-allowed text-white font-extrabold py-4 px-6 rounded-xl shadow-sm transition-colors duration-150 sm:hover:-translate-y-0.5 text-base flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
                 >
-                  <MessageCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  <span>Hantar &amp; Terus ke WhatsApp</span>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden="true" />
+                      <span>Menyimpan rekod...</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      <span>Hantar &amp; Terus ke WhatsApp</span>
+                    </>
+                  )}
                 </button>
               </form>
             )}

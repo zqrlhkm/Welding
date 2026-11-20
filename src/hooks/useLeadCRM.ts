@@ -9,17 +9,14 @@ import {
   NewLeadInput,
 } from '../types/crm';
 
-export const STORAGE_KEY = 'welding_leads_data';
-const STORAGE_UPDATED_EVENT = 'storage_updated';
-
-const DEFAULT_WEBAPP_URL =
+export const DEFAULT_WEBAPP_URL =
   'https://script.google.com/macros/s/AKfycbyDF3B9PS63ElhWCydKiUb8G7u2TweH3da1oQkweMrBaopdfUmLqsZ1IrEGphXCAjoI/exec';
 
-const WEBAPP_URL = (
+export const WEBAPP_URL = (
   import.meta.env.VITE_GOOGLE_SHEET_WEBAPP_URL || DEFAULT_WEBAPP_URL
 ).trim();
 
-let inMemoryLeadsFallback: LeadRecord[] = [];
+const CRM_SHEETS_UPDATED_EVENT = 'gis_sheets_crm_updated';
 
 function isValidStatus(value: unknown): value is LeadStatus {
   return typeof value === 'string' && LEAD_STATUSES.includes(value as LeadStatus);
@@ -35,66 +32,61 @@ function normalizeExperience(value: unknown): ExperienceLevel {
   return EXPERIENCE_LEVELS[0];
 }
 
-function isStorageAvailable(): boolean {
-  if (typeof window === 'undefined') return false;
+function isApiSuccess(data: Record<string, unknown> | null): boolean {
+  if (!data) return false;
+  return data.status === 'success' || data.success === true;
+}
+
+function normalizeLeadList(rawList: unknown[]): LeadRecord[] {
+  return rawList
+    .filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === 'object' && item !== null
+    )
+    .map((item) => ({
+      id: String(item.id ?? ''),
+      createdAt: String(item.createdAt ?? ''),
+      name: String(item.name ?? ''),
+      phone: String(item.phone ?? ''),
+      email: String(item.email ?? ''),
+      program: String(item.program ?? ''),
+      experienceLevel: normalizeExperience(
+        item.experienceLevel ?? item.experience
+      ),
+      notes: typeof item.notes === 'string' ? item.notes : String(item.notes ?? ''),
+      status: isValidStatus(item.status) ? item.status : 'New Lead',
+    }))
+    .filter((lead) => Boolean(lead.id || lead.name || lead.phone))
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+}
+
+async function parseJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const rawText = await response.text();
+  if (!rawText) {
+    return {};
+  }
   try {
-    const testKey = '__gis_crm_storage_test__';
-    window.localStorage.setItem(testKey, '1');
-    window.localStorage.removeItem(testKey);
-    return true;
+    const parsed = JSON.parse(rawText);
+    if (Array.isArray(parsed)) {
+      return { status: 'success', leads: parsed };
+    }
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
   } catch {
-    return false;
+    throw new Error(
+      'Google Apps Script memulangkan respons bukan JSON. Pastikan Web App ditetapkan kepada "Execute as: Me" dan "Who has access: Anyone".'
+    );
   }
 }
 
-function readStoredLeads(): LeadRecord[] {
-  if (typeof window === 'undefined' || !isStorageAvailable()) {
-    return inMemoryLeadsFallback;
-  }
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-      .map((item) => ({
-        id: String(item.id || `LEAD-${Date.now()}`),
-        createdAt: String(item.createdAt || new Date().toISOString()),
-        name: String(item.name || ''),
-        phone: String(item.phone || ''),
-        email: String(item.email || ''),
-        program: String(item.program || ''),
-        experienceLevel: normalizeExperience(item.experienceLevel ?? item.experience),
-        notes: typeof item.notes === 'string' ? item.notes : '',
-        status: isValidStatus(item.status) ? item.status : 'New Lead',
-      }));
-  } catch (error) {
-    console.error('[CRM] Ralat membaca localStorage:', error);
-    return [];
-  }
-}
-
-function writeStoredLeads(records: LeadRecord[]): boolean {
-  inMemoryLeadsFallback = records;
-  if (typeof window === 'undefined' || !isStorageAvailable()) {
-    return false;
-  }
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    return true;
-  } catch (error) {
-    console.error('[CRM] Ralat menulis ke localStorage:', error);
-    return false;
-  }
-}
-
-function notifyStorageUpdated(): void {
+function notifySheetsUpdated(): void {
   if (typeof window === 'undefined') return;
-  queueMicrotask(() => {
-    window.dispatchEvent(new Event(STORAGE_UPDATED_EVENT));
-  });
+  window.dispatchEvent(new Event(CRM_SHEETS_UPDATED_EVENT));
 }
 
 export function formatTimestamp(isoString: string): string {
@@ -113,17 +105,22 @@ export function formatTimestamp(isoString: string): string {
 }
 
 export function useLeadCRM() {
-  const [leads, setLeads] = useState<Lead[]>(() => readStoredLeads());
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const isGoogleSheetConfigured = Boolean(WEBAPP_URL && WEBAPP_URL.startsWith('http'));
+  const isGoogleSheetConfigured = Boolean(
+    WEBAPP_URL && WEBAPP_URL.startsWith('http')
+  );
 
-  const refreshLeads = useCallback(async () => {
+  const refreshLeads = useCallback(async (): Promise<LeadRecord[]> => {
     if (!isGoogleSheetConfigured) {
-      const local = readStoredLeads();
-      setLeads(local);
-      return;
+      const msg = 'URL Google Sheets Web App belum dikonfigurasi.';
+      setSyncError(msg);
+      setLeads([]);
+      return [];
     }
 
     setIsLoading(true);
@@ -136,134 +133,205 @@ export function useLeadCRM() {
         redirect: 'follow',
         cache: 'no-store',
       });
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Gagal memuatkan data dari Google Sheets.`);
+        throw new Error(
+          `HTTP ${response.status}: Gagal mendapatkan data daripada Google Sheets.`
+        );
       }
-      const data = await response.json();
-      if (data && data.status === 'success' && Array.isArray(data.leads)) {
-        const fetchedLeads: LeadRecord[] = data.leads
-          .map((item: Record<string, unknown>) => ({
-            id: String(item.id ?? ''),
-            createdAt: String(item.createdAt ?? ''),
-            name: String(item.name ?? ''),
-            phone: String(item.phone ?? ''),
-            email: String(item.email ?? ''),
-            program: String(item.program ?? ''),
-            experienceLevel: normalizeExperience(item.experienceLevel),
-            notes: String(item.notes ?? ''),
-            status: isValidStatus(item.status) ? item.status : 'New Lead',
-          }))
-          .sort(
-            (a: LeadRecord, b: LeadRecord) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
+
+      const data = await parseJsonResponse(response);
+      if (isApiSuccess(data) && Array.isArray(data.leads)) {
+        const fetchedLeads = normalizeLeadList(data.leads);
         setLeads(fetchedLeads);
-        writeStoredLeads(fetchedLeads);
-        console.log('[CRM] Berjaya menyegerakkan leads dari Google Sheets:', fetchedLeads.length);
-      } else {
-        throw new Error(data.message || 'Gagal memuatkan data dari Google Sheets.');
+        console.log(
+          '[CRM] Berjaya memuat turun rekod dari Google Sheets:',
+          fetchedLeads.length
+        );
+        return fetchedLeads;
       }
-    } catch (err: any) {
-      console.warn('[CRM] Gagal sambung ke Google Sheet Web App, menggunakan cache tempatan:', err);
-      setSyncError(err.message || 'Ralat sambungan rangkaian Google Sheets.');
-      const local = readStoredLeads();
-      setLeads(local);
+
+      throw new Error(
+        typeof data.message === 'string' && data.message
+          ? data.message
+          : 'Format respons Google Sheets tidak sah.'
+      );
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Gagal berhubung dengan Google Sheets Web App.';
+      console.error('[CRM] Ralat menyegerakkan Google Sheets:', err);
+      setSyncError(message);
+      return [];
     } finally {
       setIsLoading(false);
     }
   }, [isGoogleSheetConfigured]);
 
   useEffect(() => {
-    refreshLeads();
+    void refreshLeads();
 
-    const handleCustomStorageUpdated = () => {
-      const local = readStoredLeads();
-      setLeads(local);
+    const handleSheetsUpdated = () => {
+      void refreshLeads();
     };
 
-    window.addEventListener(STORAGE_UPDATED_EVENT, handleCustomStorageUpdated);
-    window.addEventListener('pageshow', refreshLeads);
+    window.addEventListener(CRM_SHEETS_UPDATED_EVENT, handleSheetsUpdated);
+    window.addEventListener('pageshow', handleSheetsUpdated);
 
     return () => {
-      window.removeEventListener(STORAGE_UPDATED_EVENT, handleCustomStorageUpdated);
-      window.removeEventListener('pageshow', refreshLeads);
+      window.removeEventListener(CRM_SHEETS_UPDATED_EVENT, handleSheetsUpdated);
+      window.removeEventListener('pageshow', handleSheetsUpdated);
     };
   }, [refreshLeads]);
 
-  const postToGoogleSheet = async (payload: object) => {
-    if (!isGoogleSheetConfigured) return;
-    try {
-      await fetch(WEBAPP_URL, {
+  const postToGoogleSheet = useCallback(
+    async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      if (!isGoogleSheetConfigured) {
+        throw new Error('URL Google Sheets Web App belum dikonfigurasi.');
+      }
+
+      const response = await fetch(WEBAPP_URL, {
         method: 'POST',
-        mode: 'no-cors',
+        mode: 'cors',
         redirect: 'follow',
-        keepalive: true,
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
         body: JSON.stringify(payload),
       });
-      console.log('[CRM] Berjaya hantar tindakan ke Google Sheet:', payload);
-    } catch (err) {
-      console.error('[CRM] Ralat menghantar kemas kini ke Google Sheet:', err);
-    }
-  };
 
-  const addLead = useCallback((input: NewLeadInput): LeadRecord => {
-    const newRecord: LeadRecord = {
-      id: `LEAD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-      createdAt: new Date().toISOString(),
-      name: input.name.trim(),
-      phone: input.phone.trim(),
-      email: input.email.trim(),
-      program: input.program,
-      experienceLevel: normalizeExperience(input.experienceLevel ?? input.experience),
-      notes: input.notes ? input.notes.trim() : '',
-      status: isValidStatus(input.status) ? input.status : 'New Lead',
-    };
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}: Gagal menghantar data ke Google Sheets.`
+        );
+      }
 
-    const current = readStoredLeads();
-    const next = [newRecord, ...current];
-    writeStoredLeads(next);
-    setLeads(next);
-    notifyStorageUpdated();
+      const data = await parseJsonResponse(response);
+      if (!isApiSuccess(data)) {
+        throw new Error(
+          typeof data.message === 'string' && data.message
+            ? data.message
+            : 'Google Sheets menolak permintaan ini.'
+        );
+      }
 
-    postToGoogleSheet({
-      action: 'create',
-      lead: newRecord,
-    });
+      return data;
+    },
+    [isGoogleSheetConfigured]
+  );
 
-    return newRecord;
-  }, [isGoogleSheetConfigured]);
+  const addLead = useCallback(
+    async (input: NewLeadInput): Promise<LeadRecord> => {
+      setIsSubmitting(true);
+      setSubmitError(null);
 
-  const updateLeadStatus = useCallback((id: string, status: LeadStatus) => {
-    const current = readStoredLeads();
-    const next = current.map((lead) =>
-      lead.id === id ? { ...lead, status } : lead
-    );
-    writeStoredLeads(next);
-    setLeads(next);
-    notifyStorageUpdated();
+      const newRecord: LeadRecord = {
+        id: `LEAD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        createdAt: new Date().toISOString(),
+        name: input.name.trim(),
+        phone: input.phone.trim(),
+        email: input.email.trim(),
+        program: input.program,
+        experienceLevel: normalizeExperience(
+          input.experienceLevel ?? input.experience
+        ),
+        notes: input.notes ? input.notes.trim() : '',
+        status: isValidStatus(input.status) ? input.status : 'New Lead',
+      };
 
-    postToGoogleSheet({
-      action: 'updateStatus',
-      id,
-      status,
-    });
-  }, [isGoogleSheetConfigured]);
+      try {
+        console.log('[CRM] Menghantar rekod baharu ke Google Sheets:', newRecord);
+        const result = await postToGoogleSheet({
+          action: 'create',
+          lead: newRecord,
+        });
+        console.log('[CRM] Respons Google Sheets (create):', result);
 
-  const deleteLead = useCallback((id: string) => {
-    const current = readStoredLeads();
-    const next = current.filter((lead) => lead.id !== id);
-    writeStoredLeads(next);
-    setLeads(next);
-    notifyStorageUpdated();
+        await refreshLeads();
+        notifySheetsUpdated();
+        return newRecord;
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Gagal menyimpan rekod ke Google Sheets. Sila cuba sebentar lagi.';
+        console.error('[CRM] Gagal menambah lead ke Google Sheets:', err);
+        setSubmitError(message);
+        throw new Error(message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [postToGoogleSheet, refreshLeads]
+  );
 
-    postToGoogleSheet({
-      action: 'delete',
-      id,
-    });
-  }, [isGoogleSheetConfigured]);
+  const updateLeadStatus = useCallback(
+    async (id: string, status: LeadStatus): Promise<void> => {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setSyncError(null);
+
+      try {
+        const result = await postToGoogleSheet({
+          action: 'updateStatus',
+          id,
+          status,
+        });
+        console.log('[CRM] Status lead dikemas kini dalam Google Sheets:', {
+          id,
+          status,
+          result,
+        });
+
+        await refreshLeads();
+        notifySheetsUpdated();
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Gagal mengemas kini status dalam Google Sheets.';
+        console.error('[CRM] Gagal kemas kini status:', err);
+        setSyncError(message);
+        setSubmitError(message);
+        throw new Error(message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [postToGoogleSheet, refreshLeads]
+  );
+
+  const deleteLead = useCallback(
+    async (id: string): Promise<void> => {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setSyncError(null);
+
+      try {
+        const result = await postToGoogleSheet({
+          action: 'delete',
+          id,
+        });
+        console.log('[CRM] Lead dipadam dari Google Sheets:', { id, result });
+
+        await refreshLeads();
+        notifySheetsUpdated();
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Gagal memadam rekod daripada Google Sheets.';
+        console.error('[CRM] Gagal memadam lead:', err);
+        setSyncError(message);
+        setSubmitError(message);
+        throw new Error(message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [postToGoogleSheet, refreshLeads]
+  );
 
   const exportLeadsToCSV = useCallback((recordsToExport: LeadRecord[]) => {
     const headers = [
@@ -296,7 +364,10 @@ export function useLeadCRM() {
     };
 
     const csvContent =
-      '\uFEFF' + [headers.join(','), ...rows.map((r) => r.map(escapeCell).join(','))].join('\n');
+      '\uFEFF' +
+      [headers.join(','), ...rows.map((r) => r.map(escapeCell).join(','))].join(
+        '\n'
+      );
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -314,7 +385,9 @@ export function useLeadCRM() {
   return {
     leads,
     isLoading,
+    isSubmitting,
     syncError,
+    submitError,
     isGoogleSheetConfigured,
     addLead,
     updateLeadStatus,

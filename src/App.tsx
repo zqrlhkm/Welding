@@ -35,6 +35,7 @@ export default function App() {
   const {
     leads,
     isLoading,
+    isSubmitting,
     syncError,
     isGoogleSheetConfigured,
     addLead,
@@ -108,6 +109,7 @@ export default function App() {
       <AdminDashboard
         leads={leads}
         isLoading={isLoading}
+        isSubmitting={isSubmitting}
         syncError={syncError}
         isGoogleSheetConfigured={isGoogleSheetConfigured}
         onAddLead={addLead}

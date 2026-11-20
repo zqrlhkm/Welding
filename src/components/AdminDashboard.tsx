@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   ArrowLeft,
   Download,
   ExternalLink,
@@ -25,14 +26,15 @@ import { BrandLogo } from './BrandLogo';
 
 interface AdminDashboardProps {
   leads: LeadRecord[];
-  onAddLead: (lead: NewLeadInput) => void;
-  onUpdateStatus: (id: string, status: LeadStatus) => void;
-  onDeleteLead: (id: string) => void;
+  onAddLead: (lead: NewLeadInput) => Promise<LeadRecord>;
+  onUpdateStatus: (id: string, status: LeadStatus) => Promise<void>;
+  onDeleteLead: (id: string) => Promise<void>;
   onExportCSV: (records: LeadRecord[]) => void;
   onExitAdmin: (scrollToForm?: boolean) => void;
   onLogout: () => void;
-  onRefresh?: () => void;
+  onRefresh?: () => Promise<LeadRecord[] | void> | void;
   isLoading?: boolean;
+  isSubmitting?: boolean;
   isGoogleSheetConfigured?: boolean;
   syncError?: string | null;
 }
@@ -61,6 +63,7 @@ export function AdminDashboard({
   onLogout,
   onRefresh,
   isLoading = false,
+  isSubmitting = false,
   isGoogleSheetConfigured = false,
   syncError = null,
 }: AdminDashboardProps) {
@@ -68,6 +71,7 @@ export function AdminDashboard({
   const [programFilter, setProgramFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'ALL'>('ALL');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [busyLeadId, setBusyLeadId] = useState<string | null>(null);
   const [showManualAdd, setShowManualAdd] = useState(false);
 
   // Manual walk-in lead state
@@ -121,32 +125,64 @@ export function AdminDashboard({
     setStatusFilter('ALL');
   };
 
-  const handleManualSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleManualSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (manualName.trim().length < 2 || manualPhone.trim().length < 8) {
       setManualError('Sila masukkan nama dan nombor telefon yang sah.');
       return;
     }
     setManualError('');
-    onAddLead({
-      name: manualName.trim(),
-      phone: manualPhone.trim(),
-      email: manualEmail.trim() || 'tiada@rekod.tempatan',
-      program: manualProgram,
-      experienceLevel: manualExperience,
-    });
-    setManualName('');
-    setManualPhone('');
-    setManualEmail('');
-    setShowManualAdd(false);
+    try {
+      await onAddLead({
+        name: manualName.trim(),
+        phone: manualPhone.trim(),
+        email: manualEmail.trim() || 'tiada@rekod.tempatan',
+        program: manualProgram,
+        experienceLevel: manualExperience,
+      });
+      setManualName('');
+      setManualPhone('');
+      setManualEmail('');
+      setShowManualAdd(false);
+    } catch (err: unknown) {
+      setManualError(
+        err instanceof Error
+          ? err.message
+          : 'Gagal menyimpan rekod manual ke Google Sheets.'
+      );
+    }
+  };
+
+  const handleStatusChange = async (id: string, status: LeadStatus) => {
+    setBusyLeadId(id);
+    try {
+      await onUpdateStatus(id, status);
+    } catch {
+      // Error surfaced via syncError banner
+    } finally {
+      setBusyLeadId(null);
+    }
+  };
+
+  const handleConfirmDelete = async (id: string) => {
+    setBusyLeadId(id);
+    try {
+      await onDeleteLead(id);
+      setPendingDeleteId(null);
+    } catch {
+      // Error surfaced via syncError banner
+    } finally {
+      setBusyLeadId(null);
+    }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* Top Bar Contract: Breadcrumb Left + 1-2 Actions Right */}
+      {/* Top Bar Contract: Breadcrumb Left + Actions Right */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 min-h-16 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 min-w-0">
             <button
               type="button"
               onClick={() => onExitAdmin(false)}
@@ -165,34 +201,49 @@ export function AdminDashboard({
             <span className="text-sm font-bold text-slate-950 truncate">
               Pengurusan Lead CRM
             </span>
-            {/* Sync Badge */}
+            {/* Google Sheets Connection Badge (visible across all screen sizes) */}
             <span
-              className={`hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                isGoogleSheetConfigured
-                  ? syncError
-                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+                isGoogleSheetConfigured && !syncError
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
-              title={isGoogleSheetConfigured ? (syncError || 'Google Sheets Connected (ziqrul@gis.edu.my)') : 'Using LocalStorage Fallback'}
+              title={
+                syncError
+                  ? syncError
+                  : 'Google Sheets (ziqrul@gis.edu.my)'
+              }
             >
-              <span className={`w-2 h-2 rounded-full ${isGoogleSheetConfigured && !syncError ? 'bg-emerald-500 animate-pulse' : isGoogleSheetConfigured ? 'bg-amber-500' : 'bg-slate-400'}`} />
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  isGoogleSheetConfigured && !syncError
+                    ? 'bg-emerald-500'
+                    : 'bg-rose-500'
+                }`}
+              />
               <span>
-                {isGoogleSheetConfigured ? (syncError ? 'Google Sheet (Ralat Sambutan)' : 'Google Sheets Aktif') : 'Storan Tempatan (LocalStorage)'}
+                {isGoogleSheetConfigured && !syncError
+                  ? 'Google Sheets (ziqrul@gis.edu.my)'
+                  : 'Google Sheets (Ralat Sambungan)'}
               </span>
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             {onRefresh && (
               <button
                 type="button"
-                onClick={onRefresh}
-                disabled={isLoading}
+                onClick={() => {
+                  void onRefresh();
+                }}
+                disabled={isLoading || isSubmitting}
                 title="Muat semula dari Google Sheets"
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
               >
-                <RefreshCw className={`w-4 h-4 shrink-0 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+                <RefreshCw
+                  className={`w-4 h-4 shrink-0 ${isLoading ? 'animate-spin' : ''}`}
+                  aria-hidden="true"
+                />
                 <span className="hidden md:inline">Segar Semula</span>
               </button>
             )}
@@ -226,6 +277,34 @@ export function AdminDashboard({
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* Google Sheets Sync Error Banner */}
+        {syncError && (
+          <section
+            role="alert"
+            className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-900"
+          >
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="text-sm">
+                <p className="font-bold">Ralat Sambungan Google Sheets (ziqrul@gis.edu.my)</p>
+                <p className="text-rose-800 mt-0.5 break-words">{syncError}</p>
+              </div>
+            </div>
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={() => {
+                  void onRefresh();
+                }}
+                disabled={isLoading}
+                className="self-start sm:self-auto px-3.5 py-2 rounded-lg bg-rose-700 hover:bg-rose-800 disabled:opacity-50 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Cuba Semula
+              </button>
+            )}
+          </section>
+        )}
+
         {/* Manual Lead Add Drawer */}
         {showManualAdd && (
           <section className="bg-white border border-slate-200 rounded-xl p-6">
@@ -297,9 +376,10 @@ export function AdminDashboard({
                 </select>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm cursor-pointer whitespace-nowrap shrink-0"
+                  disabled={isSubmitting}
+                  className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold text-sm cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  Simpan
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
             </form>
@@ -507,11 +587,15 @@ export function AdminDashboard({
                         <td className="py-3 px-4 whitespace-nowrap">
                           <select
                             value={lead.status}
+                            disabled={busyLeadId === lead.id}
                             aria-label={`Status untuk ${lead.name}`}
-                            onChange={(e) =>
-                              onUpdateStatus(lead.id, e.target.value as LeadStatus)
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-900/15 ${
+                            onChange={(e) => {
+                              void handleStatusChange(
+                                lead.id,
+                                e.target.value as LeadStatus
+                              );
+                            }}
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-900/15 ${
                               STATUS_SELECT_STYLES[lead.status]
                             }`}
                           >
@@ -527,18 +611,19 @@ export function AdminDashboard({
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
+                                disabled={busyLeadId === lead.id}
                                 onClick={() => {
-                                  onDeleteLead(lead.id);
-                                  setPendingDeleteId(null);
+                                  void handleConfirmDelete(lead.id);
                                 }}
-                                className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer"
+                                className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
                               >
-                                Sahkan
+                                {busyLeadId === lead.id ? 'Memadam...' : 'Sahkan'}
                               </button>
                               <button
                                 type="button"
+                                disabled={busyLeadId === lead.id}
                                 onClick={() => setPendingDeleteId(null)}
-                                className="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                                className="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-semibold cursor-pointer"
                               >
                                 Batal
                               </button>
@@ -546,9 +631,10 @@ export function AdminDashboard({
                           ) : (
                             <button
                               type="button"
+                              disabled={busyLeadId === lead.id}
                               onClick={() => setPendingDeleteId(lead.id)}
                               aria-label={`Padam rekod ${lead.name}`}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-50 transition-colors cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                               <span>Padam</span>
