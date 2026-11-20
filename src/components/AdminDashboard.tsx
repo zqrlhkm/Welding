@@ -4,6 +4,7 @@ import {
   ExternalLink,
   LogOut,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   Users,
@@ -30,6 +31,10 @@ interface AdminDashboardProps {
   onExportCSV: (records: LeadRecord[]) => void;
   onExitAdmin: (scrollToForm?: boolean) => void;
   onLogout: () => void;
+  onRefresh?: () => void;
+  isLoading?: boolean;
+  isGoogleSheetConfigured?: boolean;
+  syncError?: string | null;
 }
 
 const STATUS_SELECT_STYLES: Record<LeadStatus, string> = {
@@ -54,6 +59,10 @@ export function AdminDashboard({
   onExportCSV,
   onExitAdmin,
   onLogout,
+  onRefresh,
+  isLoading = false,
+  isGoogleSheetConfigured = false,
+  syncError = null,
 }: AdminDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [programFilter, setProgramFilter] = useState<string>('ALL');
@@ -156,9 +165,37 @@ export function AdminDashboard({
             <span className="text-sm font-bold text-slate-950 truncate">
               Pengurusan Lead CRM
             </span>
+            {/* Sync Badge */}
+            <span
+              className={`hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                isGoogleSheetConfigured
+                  ? syncError
+                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}
+              title={isGoogleSheetConfigured ? (syncError || 'Google Sheets Connected (ziqrul@gis.edu.my)') : 'Using LocalStorage Fallback'}
+            >
+              <span className={`w-2 h-2 rounded-full ${isGoogleSheetConfigured && !syncError ? 'bg-emerald-500 animate-pulse' : isGoogleSheetConfigured ? 'bg-amber-500' : 'bg-slate-400'}`} />
+              <span>
+                {isGoogleSheetConfigured ? (syncError ? 'Google Sheet (Ralat Sambutan)' : 'Google Sheets Aktif') : 'Storan Tempatan (LocalStorage)'}
+              </span>
+            </span>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={isLoading}
+                title="Muat semula dari Google Sheets"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 shrink-0 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+                <span className="hidden md:inline">Segar Semula</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowManualAdd((prev) => !prev)}

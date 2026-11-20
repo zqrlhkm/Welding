@@ -34,6 +34,9 @@ export default function App() {
 
   const {
     leads,
+    isLoading,
+    syncError,
+    isGoogleSheetConfigured,
     addLead,
     updateLeadStatus,
     deleteLead,
@@ -103,10 +106,14 @@ export default function App() {
     return (
       <AdminDashboard
         leads={leads}
+        isLoading={isLoading}
+        syncError={syncError}
+        isGoogleSheetConfigured={isGoogleSheetConfigured}
         onAddLead={addLead}
         onUpdateStatus={updateLeadStatus}
         onDeleteLead={deleteLead}
         onExportCSV={exportLeadsToCSV}
+        onRefresh={refreshLeads}
         onExitAdmin={exitAdmin}
         onLogout={handleLogout}
       />

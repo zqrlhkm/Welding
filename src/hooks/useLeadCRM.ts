@@ -10,11 +10,12 @@ import {
 } from '../types/crm';
 
 export const STORAGE_KEY = 'welding_leads_data';
-export const CRM_STORAGE_KEY = STORAGE_KEY;
-const LEGACY_STORAGE_KEY = 'gis_welding_crm_leads_v1';
-const CRM_SYNC_EVENT = 'gis_welding_crm_sync';
+const STORAGE_UPDATED_EVENT = 'storage_updated';
 
-// In-memory fallback for mobile private browsing / strict WebViews where localStorage is blocked
+const WEBAPP_URL = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_SHEET_WEBAPP_URL 
+  ? String(import.meta.env.VITE_GOOGLE_SHEET_WEBAPP_URL).trim() 
+  : '';
+
 let inMemoryLeadsFallback: LeadRecord[] = [];
 
 function isValidStatus(value: unknown): value is LeadStatus {
@@ -43,97 +44,54 @@ function isStorageAvailable(): boolean {
   }
 }
 
-function parseRawLeads(raw: string | null): LeadRecord[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (item): item is Record<string, unknown> =>
-          typeof item === 'object' &&
-          item !== null &&
-          typeof item.id === 'string' &&
-          typeof item.name === 'string' &&
-          typeof item.phone === 'string' &&
-          typeof item.email === 'string' &&
-          typeof item.program === 'string' &&
-          typeof item.createdAt === 'string'
-      )
-      .map((item) => ({
-        id: item.id as string,
-        createdAt: item.createdAt as string,
-        name: item.name as string,
-        phone: item.phone as string,
-        email: item.email as string,
-        program: item.program as string,
-        experienceLevel: normalizeExperience(
-          item.experienceLevel ?? item.experience
-        ),
-        notes: typeof item.notes === 'string' ? item.notes : '',
-        status: isValidStatus(item.status) ? item.status : 'New Lead',
-      }));
-  } catch {
-    return [];
-  }
-}
-
 function readStoredLeads(): LeadRecord[] {
   if (typeof window === 'undefined' || !isStorageAvailable()) {
     return inMemoryLeadsFallback;
   }
   try {
-    const primaryRaw = window.localStorage.getItem(STORAGE_KEY);
-    if (primaryRaw) {
-      const normalized = parseRawLeads(primaryRaw);
-      inMemoryLeadsFallback = normalized;
-      return normalized;
-    }
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
 
-    const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacyRaw) {
-      const migrated = parseRawLeads(legacyRaw);
-      if (migrated.length > 0) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-        inMemoryLeadsFallback = migrated;
-        return migrated;
-      }
-    }
-
-    return inMemoryLeadsFallback;
-  } catch {
-    return inMemoryLeadsFallback;
+    return parsed
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item) => ({
+        id: String(item.id || `LEAD-${Date.now()}`),
+        createdAt: String(item.createdAt || new Date().toISOString()),
+        name: String(item.name || ''),
+        phone: String(item.phone || ''),
+        email: String(item.email || ''),
+        program: String(item.program || ''),
+        experienceLevel: normalizeExperience(item.experienceLevel ?? item.experience),
+        notes: typeof item.notes === 'string' ? item.notes : '',
+        status: isValidStatus(item.status) ? item.status : 'New Lead',
+      }));
+  } catch (error) {
+    console.error('[CRM] Ralat membaca localStorage:', error);
+    return [];
   }
 }
 
 function writeStoredLeads(records: LeadRecord[]): boolean {
   inMemoryLeadsFallback = records;
   if (typeof window === 'undefined' || !isStorageAvailable()) {
-    console.warn('[CRM] localStorage tidak tersedia, rekod disimpan dalam memori sesi.');
     return false;
   }
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
     return true;
   } catch (error) {
-    console.error('[CRM] Gagal menulis ke localStorage:', error);
+    console.error('[CRM] Ralat menulis ke localStorage:', error);
     return false;
   }
 }
 
-function notifySameTabCRMListeners(): void {
+function notifyStorageUpdated(): void {
   if (typeof window === 'undefined') return;
   queueMicrotask(() => {
-    window.dispatchEvent(new CustomEvent(CRM_SYNC_EVENT));
+    window.dispatchEvent(new Event(STORAGE_UPDATED_EVENT));
   });
-}
-
-function escapeCsvCell(value: string): string {
-  const normalized = value.replace(/\r?\n/g, ' ');
-  if (/[",]/.test(normalized)) {
-    return `"${normalized.replace(/"/g, '""')}"`;
-  }
-  return normalized;
 }
 
 export function formatTimestamp(isoString: string): string {
@@ -153,41 +111,87 @@ export function formatTimestamp(isoString: string): string {
 
 export function useLeadCRM() {
   const [leads, setLeads] = useState<Lead[]>(() => readStoredLeads());
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
-  const refreshLeads = useCallback(() => {
-    const fresh = readStoredLeads();
-    console.log(`[CRM] Muat semula rekod (${STORAGE_KEY}):`, fresh.length);
-    setLeads((prev) =>
-      JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh
-    );
-  }, []);
+  const isGoogleSheetConfigured = Boolean(WEBAPP_URL && WEBAPP_URL.startsWith('http'));
+
+  const refreshLeads = useCallback(async () => {
+    if (!isGoogleSheetConfigured) {
+      const local = readStoredLeads();
+      setLeads(local);
+      return;
+    }
+
+    setIsLoading(true);
+    setSyncError(null);
+    try {
+      const response = await fetch(WEBAPP_URL, {
+        method: 'GET',
+        mode: 'cors',
+      });
+      const data = await response.json();
+      if (data && data.status === 'success' && Array.isArray(data.leads)) {
+        const fetchedLeads: LeadRecord[] = data.leads.map((item: any) => ({
+          id: String(item.id),
+          createdAt: String(item.createdAt),
+          name: String(item.name),
+          phone: String(item.phone),
+          email: String(item.email),
+          program: String(item.program),
+          experienceLevel: normalizeExperience(item.experienceLevel),
+          notes: String(item.notes || ''),
+          status: isValidStatus(item.status) ? item.status : 'New Lead',
+        }));
+        setLeads(fetchedLeads);
+        writeStoredLeads(fetchedLeads);
+        console.log('[CRM] Berjaya menyegerakkan leads dari Google Sheets:', fetchedLeads.length);
+      } else {
+        throw new Error(data.message || 'Gagal memuatkan data dari Google Sheets.');
+      }
+    } catch (err: any) {
+      console.warn('[CRM] Gagal sambung ke Google Sheet Web App, menggunakan cache tempatan:', err);
+      setSyncError(err.message || 'Ralat sambungan rangkaian Google Sheets.');
+      const local = readStoredLeads();
+      setLeads(local);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isGoogleSheetConfigured]);
 
   useEffect(() => {
     refreshLeads();
 
-    const handleStorageSync = (event: StorageEvent) => {
-      if (event.key === STORAGE_KEY || event.key === null) {
-        refreshLeads();
-      }
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        refreshLeads();
-      }
+    const handleCustomStorageUpdated = () => {
+      const local = readStoredLeads();
+      setLeads(local);
     };
 
-    window.addEventListener('storage', handleStorageSync);
-    window.addEventListener(CRM_SYNC_EVENT, refreshLeads);
+    window.addEventListener(STORAGE_UPDATED_EVENT, handleCustomStorageUpdated);
     window.addEventListener('pageshow', refreshLeads);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.removeEventListener('storage', handleStorageSync);
-      window.removeEventListener(CRM_SYNC_EVENT, refreshLeads);
+      window.removeEventListener(STORAGE_UPDATED_EVENT, handleCustomStorageUpdated);
       window.removeEventListener('pageshow', refreshLeads);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [refreshLeads]);
+
+  const postToGoogleSheet = async (payload: object) => {
+    if (!isGoogleSheetConfigured) return;
+    try {
+      await fetch(WEBAPP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      });
+      console.log('[CRM] Berjaya hantar tindakan ke Google Sheet:', payload);
+    } catch (err) {
+      console.error('[CRM] Ralat menghantar kemas kini ke Google Sheet:', err);
+    }
+  };
 
   const addLead = useCallback((input: NewLeadInput): LeadRecord => {
     const newRecord: LeadRecord = {
@@ -204,18 +208,17 @@ export function useLeadCRM() {
 
     const current = readStoredLeads();
     const next = [newRecord, ...current];
-    const persisted = writeStoredLeads(next);
+    writeStoredLeads(next);
+    setLeads(next);
+    notifyStorageUpdated();
 
-    console.log('[CRM] Lead baharu disimpan:', newRecord);
-    console.log(`[CRM] Status localStorage (${STORAGE_KEY}):`, {
-      persisted,
-      totalLeads: next.length,
+    postToGoogleSheet({
+      action: 'create',
+      lead: newRecord,
     });
 
-    setLeads(next);
-    notifySameTabCRMListeners();
     return newRecord;
-  }, []);
+  }, [isGoogleSheetConfigured]);
 
   const updateLeadStatus = useCallback((id: string, status: LeadStatus) => {
     const current = readStoredLeads();
@@ -223,19 +226,28 @@ export function useLeadCRM() {
       lead.id === id ? { ...lead, status } : lead
     );
     writeStoredLeads(next);
-    console.log('[CRM] Status lead dikemas kini:', { id, status });
     setLeads(next);
-    notifySameTabCRMListeners();
-  }, []);
+    notifyStorageUpdated();
+
+    postToGoogleSheet({
+      action: 'updateStatus',
+      id,
+      status,
+    });
+  }, [isGoogleSheetConfigured]);
 
   const deleteLead = useCallback((id: string) => {
     const current = readStoredLeads();
     const next = current.filter((lead) => lead.id !== id);
     writeStoredLeads(next);
-    console.log('[CRM] Lead dipadam:', { id, remainingLeads: next.length });
     setLeads(next);
-    notifySameTabCRMListeners();
-  }, []);
+    notifyStorageUpdated();
+
+    postToGoogleSheet({
+      action: 'delete',
+      id,
+    });
+  }, [isGoogleSheetConfigured]);
 
   const exportLeadsToCSV = useCallback((recordsToExport: LeadRecord[]) => {
     const headers = [
@@ -251,19 +263,24 @@ export function useLeadCRM() {
     ];
 
     const rows = recordsToExport.map((lead) => [
-      escapeCsvCell(lead.id),
-      escapeCsvCell(formatTimestamp(lead.createdAt)),
-      escapeCsvCell(lead.name),
-      escapeCsvCell(lead.phone),
-      escapeCsvCell(lead.email),
-      escapeCsvCell(lead.program),
-      escapeCsvCell(lead.experienceLevel),
-      escapeCsvCell(lead.notes ?? ''),
-      escapeCsvCell(lead.status),
+      lead.id,
+      formatTimestamp(lead.createdAt),
+      lead.name,
+      lead.phone,
+      lead.email,
+      lead.program,
+      lead.experienceLevel,
+      lead.notes ?? '',
+      lead.status,
     ]);
 
+    const escapeCell = (val: string) => {
+      const norm = val.replace(/\r?\n/g, ' ');
+      return /[",]/.test(norm) ? `"${norm.replace(/"/g, '""')}"` : norm;
+    };
+
     const csvContent =
-      '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      '\uFEFF' + [headers.join(','), ...rows.map((r) => r.map(escapeCell).join(','))].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -280,6 +297,9 @@ export function useLeadCRM() {
 
   return {
     leads,
+    isLoading,
+    syncError,
+    isGoogleSheetConfigured,
     addLead,
     updateLeadStatus,
     deleteLead,
