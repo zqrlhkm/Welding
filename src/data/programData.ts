@@ -57,7 +57,7 @@ export const PAIN_POINTS: PainPoint[] = [
   },
   {
     number: '04',
-    title: 'Sukar Dapat Kerja Lepas Habis',
+    title: 'Sukar Dapat Kerja Lepas Habis Belajar',
     description:
       'Risau anak menganggur kerana kelayakan sijil yang tidak menepati kehendak pasaran industri pekerjaan teknikal semasa.',
     featured: true,
@@ -66,7 +66,7 @@ export const PAIN_POINTS: PainPoint[] = [
 
 export const SOLUTION_BENEFITS: BenefitItem[] = [
   {
-    title: 'Kemahiran Jaminan Tinggi (High Demand)',
+    title: 'Kemahiran Pekerjaan Jaminan Tinggi (High Demand)',
     description:
       'Sektor minyak, gas, perkapalan, dan pembuatan industri berat sentiasa memerlukan jurukimpal (welder) mahir yang bertauliah.',
   },
@@ -88,7 +88,7 @@ export const SOLUTION_BENEFITS: BenefitItem[] = [
 ];
 
 export const WORKSHOP_SPECS = [
-  { code: 'MOD-01', label: 'Teknik Kimpalan Teras', value: 'SMAW & GMAW (MIG)' },
+  { code: 'MOD-01', label: 'Teknik Kimpalan Teras', value: 'SMAW & GTAW' },
   { code: 'MOD-02', label: 'Disiplin & Sahsiah', value: 'Pemantauan Harian & Akhlak' },
   { code: 'MOD-03', label: 'Keselamatan Bengkel', value: 'Standard PPE & Prosedur Industri' },
   { code: 'MOD-04', label: 'Laluan Kerjaya', value: 'Industri Tempatan & Luar Negara' },
@@ -96,15 +96,15 @@ export const WORKSHOP_SPECS = [
 
 export const PROGRAM_TRACKS: ProgramTrack[] = [
   {
-    id: 'smaw-gmaw',
+    id: 'smaw-gtaw',
     code: 'Trek 01',
-    title: 'Sijil Asas Welding Profesional (SMAW / GMAW)',
+    title: 'Sijil Asas Welding Profesional (SMAW / GTAW)',
     audience: 'Permulaan Teknikal · Umur 15+ Tahun',
     duration: 'Fokus Praktikal Bengkel',
     focus:
       'Membina asas kukuh dalam teknik kimpalan arka (SMAW) dan MIG (GMAW) daripada peringkat sifar sehingga mahir mengendalikan peralatan bengkel.',
     outcomes: [
-      'Penguasaan teknik kimpalan kepingan dan struktur asas',
+      'Penguasaan teknik kimpalan kepingan logam dan struktur asas',
       'Latihan keselamatan bengkel dan pengendalian mesin',
       'Penilaian kemahiran berterusan oleh pengajar berpengalaman',
     ],
