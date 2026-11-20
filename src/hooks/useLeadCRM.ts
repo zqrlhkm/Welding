@@ -12,9 +12,12 @@ import {
 export const STORAGE_KEY = 'welding_leads_data';
 const STORAGE_UPDATED_EVENT = 'storage_updated';
 
-const WEBAPP_URL = typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_SHEET_WEBAPP_URL 
-  ? String(import.meta.env.VITE_GOOGLE_SHEET_WEBAPP_URL).trim() 
-  : '';
+const DEFAULT_WEBAPP_URL =
+  'https://script.google.com/macros/s/AKfycbyDF3B9PS63ElhWCydKiUb8G7u2TweH3da1oQkweMrBaopdfUmLqsZ1IrEGphXCAjoI/exec';
+
+const WEBAPP_URL = (
+  import.meta.env.VITE_GOOGLE_SHEET_WEBAPP_URL || DEFAULT_WEBAPP_URL
+).trim();
 
 let inMemoryLeadsFallback: LeadRecord[] = [];
 
@@ -126,23 +129,34 @@ export function useLeadCRM() {
     setIsLoading(true);
     setSyncError(null);
     try {
-      const response = await fetch(WEBAPP_URL, {
+      const cacheBustedUrl = `${WEBAPP_URL}${WEBAPP_URL.includes('?') ? '&' : '?'}t=${Date.now()}`;
+      const response = await fetch(cacheBustedUrl, {
         method: 'GET',
         mode: 'cors',
+        redirect: 'follow',
+        cache: 'no-store',
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Gagal memuatkan data dari Google Sheets.`);
+      }
       const data = await response.json();
       if (data && data.status === 'success' && Array.isArray(data.leads)) {
-        const fetchedLeads: LeadRecord[] = data.leads.map((item: any) => ({
-          id: String(item.id),
-          createdAt: String(item.createdAt),
-          name: String(item.name),
-          phone: String(item.phone),
-          email: String(item.email),
-          program: String(item.program),
-          experienceLevel: normalizeExperience(item.experienceLevel),
-          notes: String(item.notes || ''),
-          status: isValidStatus(item.status) ? item.status : 'New Lead',
-        }));
+        const fetchedLeads: LeadRecord[] = data.leads
+          .map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ''),
+            createdAt: String(item.createdAt ?? ''),
+            name: String(item.name ?? ''),
+            phone: String(item.phone ?? ''),
+            email: String(item.email ?? ''),
+            program: String(item.program ?? ''),
+            experienceLevel: normalizeExperience(item.experienceLevel),
+            notes: String(item.notes ?? ''),
+            status: isValidStatus(item.status) ? item.status : 'New Lead',
+          }))
+          .sort(
+            (a: LeadRecord, b: LeadRecord) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
         setLeads(fetchedLeads);
         writeStoredLeads(fetchedLeads);
         console.log('[CRM] Berjaya menyegerakkan leads dari Google Sheets:', fetchedLeads.length);
@@ -182,6 +196,8 @@ export function useLeadCRM() {
       await fetch(WEBAPP_URL, {
         method: 'POST',
         mode: 'no-cors',
+        redirect: 'follow',
+        keepalive: true,
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
