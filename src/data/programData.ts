@@ -30,7 +30,7 @@ export const DISPLAY_PHONE = '013-346 6472';
 
 export const HERO_METRICS = [
   { value: '15+ Tahun', label: 'Syarat Umur Minimum' },
-  { value: '70% Praktikal', label: 'Latihan Bengkel Sebenar' },
+  { value: '70% Praktikal 30% Teori', label: 'Latihan Bengkel Sebenar' },
   { value: '3 Laluan', label: 'Program Kemahiran Terfokus' },
   { value: '013-346 6472', label: 'Talian Penasihat Akademik' },
 ];
@@ -96,13 +96,13 @@ export const WORKSHOP_SPECS = [
 
 export const PROGRAM_TRACKS: ProgramTrack[] = [
   {
-    id: 'smaw-gtaw',
+    id: 'smaw',
     code: 'Trek 01',
-    title: 'Sijil Asas Welding Profesional (SMAW / GTAW)',
+    title: 'Sijil Kimpalan Arka Kepingan Logam (SMAW)',
     audience: 'Permulaan Teknikal · Umur 15+ Tahun',
     duration: 'Fokus Praktikal Bengkel',
     focus:
-      'Membina asas kukuh dalam teknik kimpalan arka (SMAW) dan MIG (GMAW) daripada peringkat sifar sehingga mahir mengendalikan peralatan bengkel.',
+      'Membina asas kukuh dalam teknik kimpalan arka kepingan logam (SMAW) daripada peringkat sifar sehingga mahir mengendalikan peralatan bengkel.',
     outcomes: [
       'Penguasaan teknik kimpalan kepingan logam dan struktur asas',
       'Latihan keselamatan bengkel dan pengendalian mesin',
@@ -110,31 +110,31 @@ export const PROGRAM_TRACKS: ProgramTrack[] = [
     ],
   },
   {
-    id: 'kerjaya',
+    id: 'gtaw',
     code: 'Trek 02',
-    title: 'Program Sijil Kemahiran & Penempatan Kerjaya',
-    audience: 'Laluan Industri · Persediaan Kerja',
+    title: 'Sijil Kimpalan Arka Tungsten Gas (GTAW)',
+    audience: 'Pilihan masa kini',
     duration: 'Latihan + Padanan Industri',
     focus:
-      'Direka khusus untuk melahirkan tenaga kerja teknikal siap-industri dengan pensijilan kemahiran serta sokongan bimbingan penempatan pekerjaan.',
+      'Direka khusus untuk melahirkan tenaga kerja teknikal siap-industri dengan pensijilan kemahiran.',
     outcomes: [
       'Latihan intensif mengikut spesifikasi sektor minyak, gas & fabrikasi',
-      'Persediaan temu duga teknikal dan ujian kemahiran majikan',
-      'Akses kepada rangkaian rakan industri Akademi Kemahiran Kimpalan (GIS)',
+      'Latihan keselamatan bengkel dan pengendalian mesin',
+      'Penilaian kemahiran berterusan oleh pengajar berpengalaman',
     ],
   },
   {
     id: 'remaja-15',
     code: 'Trek 03',
-    title: 'Kursus Intensif Khas Remaja 15 Tahun ke Atas',
+    title: 'Kursus Intensif Khas Remaja Lepasan SPM',
     audience: 'Khas Remaja · Bimbingan Disiplin',
     duration: 'Struktur Terbimbing',
     focus:
-      'Program khas untuk remaja berusia 15 tahun ke atas yang lebih cenderung kepada pembelajaran amali, menggabungkan kemahiran tangan dan pembentukan sahsiah.',
+      'Program khas untuk remaja lepasan SPM yang lebih cenderung kepada pembelajaran amali, menggabungkan kemahiran tangan dan pembentukan sahsiah.',
     outcomes: [
       'Kaedah pengajaran amali yang mudah difahami pelajar bukan akademik',
       'Persekitaran positif dengan pemantauan disiplin dan akhlak',
-      'Laporan berkala perkembangan pelatih kepada ibu bapa',
+      'Sijil CIDB yang diiktiraf kerajaan',
     ],
   },
 ];
