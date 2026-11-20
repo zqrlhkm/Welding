@@ -12,9 +12,19 @@ import {
 export const DEFAULT_WEBAPP_URL =
   'https://script.google.com/macros/s/AKfycbyDF3B9PS63ElhWCydKiUb8G7u2TweH3da1oQkweMrBaopdfUmLqsZ1IrEGphXCAjoI/exec';
 
-export const WEBAPP_URL = (
-  import.meta.env.VITE_GOOGLE_SHEET_WEBAPP_URL || DEFAULT_WEBAPP_URL
-).trim();
+function resolveWebAppUrl(): string {
+  const rawEnv =
+    typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_GOOGLE_SHEET_WEBAPP_URL
+      : undefined;
+  const trimmedEnv = typeof rawEnv === 'string' ? rawEnv.trim() : '';
+  if (trimmedEnv.startsWith('https://')) {
+    return trimmedEnv;
+  }
+  return DEFAULT_WEBAPP_URL;
+}
+
+export const WEBAPP_URL = resolveWebAppUrl();
 
 const CRM_SHEETS_UPDATED_EVENT = 'gis_sheets_crm_updated';
 
@@ -111,9 +121,7 @@ export function useLeadCRM() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const isGoogleSheetConfigured = Boolean(
-    WEBAPP_URL && WEBAPP_URL.startsWith('http')
-  );
+  const isGoogleSheetConfigured = WEBAPP_URL.startsWith('https://');
 
   const refreshLeads = useCallback(async (): Promise<LeadRecord[]> => {
     if (!isGoogleSheetConfigured) {
